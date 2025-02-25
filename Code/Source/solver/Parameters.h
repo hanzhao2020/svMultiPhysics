@@ -864,6 +864,30 @@ class PrecomputedSolutionParameters: public ParameterLists
     Parameter<bool> use_precomputed_solution;
 };
 
+/// @brief The RISProjectionParameters class stores parameters for the
+/// 'Add_RIS_projection' XML element used for RIS valve simulations.
+/// \code {.xml}
+/// <Add_RIS_projection name="left_ris" >
+///   <Project_from_face> right_ris </Project_from_face>
+///   <Resistance> 1.e6 </Resistance>
+/// </Add_RIS_projection>
+/// \endcode
+class RISProjectionParameters : public ParameterLists
+{
+  public:
+    RISProjectionParameters();
+
+    void set_values(tinyxml2::XMLElement* xml_elem);
+
+    static const std::string xml_element_name_;
+
+    Parameter<std::string> name;
+
+    Parameter<std::string> project_from_face;
+    Parameter<double> resistance;
+    Parameter<double> projection_tolerance;
+};
+
 /// @brief The ProjectionParameters class stores parameters for the
 /// 'Add_projection' XML element used for fluid-structure interaction 
 /// simulations.
@@ -1636,6 +1660,7 @@ class Parameters {
     void set_equation_values(tinyxml2::XMLElement* root_element);
     void set_mesh_values(tinyxml2::XMLElement* root_element);
     void set_precomputed_solution_values(tinyxml2::XMLElement* root_element);
+    void set_RIS_projection_values(tinyxml2::XMLElement* root_element);
     void set_projection_values(tinyxml2::XMLElement* root_element);
     void set_svzerodsolver_interface_values(tinyxml2::XMLElement* root_element);
 
@@ -1647,6 +1672,7 @@ class Parameters {
     GeneralSimulationParameters general_simulation_parameters;
     std::vector<MeshParameters*> mesh_parameters;
     std::vector<EquationParameters*> equation_parameters;
+    std::vector<RISProjectionParameters*> RIS_projection_parameters;
     std::vector<ProjectionParameters*> projection_parameters;
     PrecomputedSolutionParameters precomputed_solution_parameters;
 

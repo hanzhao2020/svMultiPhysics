@@ -135,6 +135,9 @@ class bcType
     // Strong/Weak application of Dirichlet BC
     int clsFlgRis = 0;
 
+    // Strong/Weak application of Dirichlet BC
+    int clsFlgRis = 0;
+
     // Pre/Res/Flat/Para... boundary types
     //
     // This stores differnt BCs as bitwise values. 
