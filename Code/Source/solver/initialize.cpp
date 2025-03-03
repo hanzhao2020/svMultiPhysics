@@ -123,24 +123,8 @@ void init_from_bin(Simulation* simulation, const std::string& fName, std::array<
           bin_file.read((char*)cem.Ya.data(), cem.Ya.msize());
         } else if (risFlag) {
           bin_file.read((char*)Ad.data(), Ad.msize());
-<<<<<<< HEAD
-          std::vector<char> clsFlagChar(com_mod.ris.clsFlg.size());
-          bin_file.read(clsFlagChar.data(), clsFlagChar.size()*sizeof(char));
-          for (int i = 0; i < com_mod.ris.clsFlg.size(); i++) {
-            com_mod.ris.clsFlg[i] = clsFlagChar[i] ? 1 : 0;}
-        } else if (urisFlag) {
-          bin_file.read((char*)Ad.data(), Ad.msize());
-          Vector<int> urisCnt(com_mod.nUris);
-          bin_file.read((char*)urisCnt.data(), urisCnt.msize());
-          std::vector<char> urisClsFlagChar(com_mod.nUris);
-          bin_file.read(urisClsFlagChar.data(), urisClsFlagChar.size()*sizeof(char));
-          for (int i = 0; i < com_mod.nUris; i++) {
-            com_mod.uris[i].cnt = urisCnt(i);
-            com_mod.uris[i].clsFlg = urisClsFlagChar[i] ? 1 : 0;}
-=======
           // [HZ] [TODO] How to read std::vector<bool> from file?
           // bin_file.read((char*)com_mod.RIS.clsFlg.data(), com_mod.RIS.clsFlg.msize());
->>>>>>> 1da8805 (Adding explicit RIS code.)
         } else {
           bin_file.read((char*)Ad.data(), Ad.msize());
         }
@@ -152,23 +136,8 @@ void init_from_bin(Simulation* simulation, const std::string& fName, std::array<
           bin_file.read((char*)Xion.data(), Xion.msize());
           bin_file.read((char*)cem.Ya.data(), cem.Ya.msize());
         } else if (risFlag) {
-<<<<<<< HEAD
-          std::vector<char> clsFlagChar(com_mod.ris.clsFlg.size());
-          bin_file.read(clsFlagChar.data(), clsFlagChar.size()*sizeof(char));
-          for (int i = 0; i < com_mod.ris.clsFlg.size(); i++) {
-            com_mod.ris.clsFlg[i] = clsFlagChar[i] ? 1 : 0;}
-        } else if (urisFlag) {
-          Vector<int> urisCnt(com_mod.nUris);
-          bin_file.read((char*)urisCnt.data(), urisCnt.msize());
-          std::vector<char> urisClsFlagChar(com_mod.nUris);
-          bin_file.read(urisClsFlagChar.data(), urisClsFlagChar.size()*sizeof(char));
-          for (int i = 0; i < com_mod.nUris; i++) {
-            com_mod.uris[i].cnt = urisCnt(i);
-            com_mod.uris[i].clsFlg = urisClsFlagChar[i] ? 1 : 0;}
-=======
           // [HZ] [TODO] How to read std::vector<bool> from file?
           // bin_file.read((char*)com_mod.RIS.clsFlg.data(), com_mod.RIS.clsFlg.msize());
->>>>>>> 1da8805 (Adding explicit RIS code.)
         } else {
           //READ(fid,REC=cm.tF()) tStamp, cTS, time, timeP(1), eq.iNorm, cplBC.xo, Yo, Ao, Do
         }
@@ -180,23 +149,8 @@ void init_from_bin(Simulation* simulation, const std::string& fName, std::array<
       if (cepEq) {
         bin_file.read((char*)Xion.data(), Xion.msize());
       } else if (risFlag) {
-<<<<<<< HEAD
-        std::vector<char> clsFlagChar(com_mod.ris.clsFlg.size());
-        bin_file.read(clsFlagChar.data(), clsFlagChar.size()*sizeof(char));
-        for (int i = 0; i < com_mod.ris.clsFlg.size(); i++) {
-          com_mod.ris.clsFlg[i] = clsFlagChar[i] ? 1 : 0;}
-      } else if (urisFlag) {
-        Vector<int> urisCnt(com_mod.nUris);
-        bin_file.read((char*)urisCnt.data(), urisCnt.msize());
-        std::vector<char> urisClsFlagChar(com_mod.nUris);
-        bin_file.read(urisClsFlagChar.data(), urisClsFlagChar.size()*sizeof(char));
-        for (int i = 0; i < com_mod.nUris; i++) {
-          com_mod.uris[i].cnt = urisCnt(i);
-          com_mod.uris[i].clsFlg = urisClsFlagChar[i] ? 1 : 0;}
-=======
           // [HZ] [TODO] How to read std::vector<bool> from file?
           // bin_file.read((char*)com_mod.RIS.clsFlg.data(), com_mod.RIS.clsFlg.msize());
->>>>>>> 1da8805 (Adding explicit RIS code.)
       } else {
         //READ(fid,REC=cm.tF()) tStamp, cTS, time, timeP(1), eq.iNorm, cplBC.xo, Yo, Ao
       }
@@ -527,12 +481,9 @@ void initialize(Simulation* simulation, Vector<double>& timeP)
   if (com_mod.risFlag) {
     i = i + com_mod.ris.nbrRIS;
   }
-<<<<<<< HEAD
   if (com_mod.urisFlag) {
     i = i + com_mod.nUris * 2;
   }
-=======
->>>>>>> 1da8805 (Adding explicit RIS code.)
 
   i = sizeof(int)*(1+com_mod.stamp.size()) + sizeof(double)*(2 + com_mod.nEq + com_mod.cplBC.nX + i*com_mod.tnNo);
 
