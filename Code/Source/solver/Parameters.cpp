@@ -2607,6 +2607,49 @@ void PrecomputedSolutionParameters::set_values(tinyxml2::XMLElement* xml_elem)
 }
 
 //////////////////////////////////////////////////////////
+//        P r o j e c t i o n P a r a m e t e r s       //
+//////////////////////////////////////////////////////////
+
+// The ProjectionParameters class stores parameters for the
+// 'Add_projection' XML element used for fluid-structure interaction simulations.
+
+/// @brief Define the XML element name for mesh parameters.
+const std::string ProjectionParameters::xml_element_name_ = "Add_projection";
+
+ProjectionParameters::ProjectionParameters()
+{
+  // A parameter that must be defined.
+  bool required = true;
+
+  name = Parameter<std::string>("name", "", required);
+
+  set_parameter("Project_from_face", "", required, project_from_face);
+  set_parameter("Projection_tolerance", 0.0, !required, projection_tolerance);
+}
+
+void ProjectionParameters::set_values(tinyxml2::XMLElement* xml_elem)
+{
+  using namespace tinyxml2;
+  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '";
+
+  // Get the 'type' from the <Add_projection name=NAME> element.
+  const char* sname;
+  auto result = xml_elem->QueryStringAttribute("name", &sname);
+  if (sname == nullptr) {
+    throw std::runtime_error("No TYPE given in the XML <Add_projection name=NAME> element.");
+  }
+  name.set(std::string(sname));
+
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
+  std::function<void(const std::string&, const std::string&)> ftpr =
+      std::bind( &ProjectionParameters::set_parameter_value, *this, _1, _2);
+
+  xml_util_set_parameters(ftpr, xml_elem, error_msg);
+}
+
+//////////////////////////////////////////////////////////
 //        RISProjectionParameters       //
 //////////////////////////////////////////////////////////
 
@@ -2649,47 +2692,142 @@ void RISProjectionParameters::set_values(tinyxml2::XMLElement* xml_elem)
 
 
 //////////////////////////////////////////////////////////
-//        P r o j e c t i o n P a r a m e t e r s       //
+//                  URIS Mesh Parameters                //
 //////////////////////////////////////////////////////////
+// [HZ] implemente URIS parameters here
 
-// The ProjectionParameters class stores parameters for the
-// 'Add_projection' XML element used for fluid-structure interaction simulations.
+// Process parameters for the 'Add_URIS_mesh' XML element used for defining URIS mesh elements.
 
 /// @brief Define the XML element name for mesh parameters.
-const std::string ProjectionParameters::xml_element_name_ = "Add_projection";
+const std::string URISMeshParameters::xml_element_name_ = "Add_URIS_mesh";
 
-ProjectionParameters::ProjectionParameters()
+URISMeshParameters::URISMeshParameters()
 {
+  bool required = true;
+
+  // Mesh name from Add_mesh element.
+  name = Parameter<std::string>("name", "", required);
+
+  // Parameters under Add_mesh element.
+  //
+  set_parameter("Mesh_scale_factor", 1.0,  !required, mesh_scale_factor);
+  set_parameter("Thickness", 1.0,  !required, thickness);
+  set_parameter("Valve_starts_as_closed", true,  !required, valve_starts_as_closed);
+  set_parameter("Positive_flow_normal_file_path", "",  !required, positive_flow_normal_file_path);
+}
+
+void URISMeshParameters::print_parameters()
+{
+  std::cout << std::endl;
+  std::cout << "---------------" << std::endl;
+  std::cout << "URIS Mesh Parameters" << std::endl;
+  std::cout << "---------------" << std::endl;
+  std::cout << name.name() << ": " << name.value() << std::endl;
+
+  auto params_name_value = get_parameter_list();
+  for (auto& [ key, value ] : params_name_value) { 
+    std::cout << key << ": " << value << std::endl;
+  }
+
+  for (auto& face : URIS_face_parameters) {
+    face->print_parameters();
+  }
+}
+
+void URISMeshParameters::set_values(tinyxml2::XMLElement* mesh_elem)
+{
+  using namespace tinyxml2;
+  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '"; 
+  auto item = mesh_elem->FirstChildElement();
+
+  while (item != nullptr) {
+    auto name = std::string(item->Value());
+
+    // Add_face sub-element.
+    if (name == URISFaceParameters::xml_element_name_) {
+      auto URIS_face_params = new URISFaceParameters();
+      URIS_face_params->set_values(item);
+      URIS_face_parameters.push_back(URIS_face_params);
+    } else if (item->GetText() != nullptr) {
+      auto value = item->GetText();
+      try {
+        set_parameter_value(name, value);
+      } catch (const std::bad_function_call& exception) {
+        throw std::runtime_error(error_msg + name + "'.");
+      }
+    } else {
+      throw std::runtime_error(error_msg + name + "'.");
+    }
+
+    item = item->NextSiblingElement();
+  }
+}
+
+
+//////////////////////////////////////////////////////////
+//                  URIS Face Parameters                //
+//////////////////////////////////////////////////////////
+
+/// @brief Process parameters for the 'Add_URIS_face' XML element.
+///
+/// Define the XML element name for face parameters.
+const std::string URISFaceParameters::xml_element_name_ = "Add_URIS_face";
+
+URISFaceParameters::URISFaceParameters()
+{
+  set_xml_element_name(xml_element_name_);
+
   // A parameter that must be defined.
   bool required = true;
 
   name = Parameter<std::string>("name", "", required);
 
-  set_parameter("Project_from_face", "", required, project_from_face);
-  set_parameter("Projection_tolerance", 0.0, !required, projection_tolerance);
+  set_parameter("Face_file_path", "", !required, face_file_path);
+  set_parameter("Open_motion_file_path", "", !required, open_motion_file_path);
+  set_parameter("Close_motion_file_path", "", !required, close_motion_file_path);
+
+  // set_parameter("End_nodes_face_file_path", "", !required, end_nodes_face_file_path);
+  // set_parameter("Quadrature_modifier_TRI3", (2.0/3.0), !required, quadrature_modifier_TRI3);
 }
 
-void ProjectionParameters::set_values(tinyxml2::XMLElement* xml_elem)
+void URISFaceParameters::print_parameters()
+{
+  std::cout << std::endl;
+  std::cout << "---------------" << std::endl;
+  std::cout << "URIS Face Parameters" << std::endl;
+  std::cout << "---------------" << std::endl;
+  std::cout << name.name() << ": " << name.value() << std::endl;
+  std::cout << face_file_path.name() << ": " << face_file_path.value() << std::endl;
+}
+
+void URISFaceParameters::set_values(tinyxml2::XMLElement* face_elem)
 {
   using namespace tinyxml2;
-  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '";
 
-  // Get the 'type' from the <Add_projection name=NAME> element.
-  const char* sname;
-  auto result = xml_elem->QueryStringAttribute("name", &sname);
-  if (sname == nullptr) {
-    throw std::runtime_error("No TYPE given in the XML <Add_projection name=NAME> element.");
+  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '"; 
+  const char* face_name;
+  auto result = face_elem->QueryStringAttribute("name", &face_name);
+  name.set(std::string(face_name));
+  auto item = face_elem->FirstChildElement();
+
+  while (item != nullptr) {
+    auto name = std::string(item->Value());
+    auto value = item->GetText();
+
+    if (value == nullptr) { 
+      throw std::runtime_error(error_msg + name + "'.");
+    }
+
+    try {
+      set_parameter_value(name, value);
+    } catch (const std::bad_function_call& exception) {
+      throw std::runtime_error(error_msg + name + "'.");
+    }
+
+    item = item->NextSiblingElement();
   }
-  name.set(std::string(sname));
-
-  using std::placeholders::_1;
-  using std::placeholders::_2;
-
-  std::function<void(const std::string&, const std::string&)> ftpr =
-      std::bind( &ProjectionParameters::set_parameter_value, *this, _1, _2);
-
-  xml_util_set_parameters(ftpr, xml_elem, error_msg);
 }
+
 
 //////////////////////////////////////////////////////////
 //        RISProjectionParameters       //
