@@ -171,6 +171,9 @@ class bcType
     // RIS0D: resistance
     double resistance = 0.0;
 
+    // RIS0D: resistance
+    double resistance = 0.0;
+
     // Penalty parameters for weakly applied Dir BC
     Vector<double> tauB{0.0, 0.0};
     //double tauB[2];
