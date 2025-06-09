@@ -1473,9 +1473,13 @@ void fluid_3d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
   } else {
     Res = com_mod.urisRes;
 <<<<<<< HEAD
+<<<<<<< HEAD
     if (com_mod.uris[0].clsFlg) {Res = com_mod.urisResClose;}
 =======
 >>>>>>> 3257cf7 (Adding implicit RIS functions for serial simulation.)
+=======
+    if (com_mod.uris[0].clsFlg) {Res = 1.0e5;}
+>>>>>>> f6358a3 (Improve the SDF function and add valve thickness and ressitance specification.)
   }
 
   double rho = dmn.prop[PhysicalProperyType::fluid_density];
@@ -1806,9 +1810,13 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
   } else {
     Res = com_mod.urisRes;
 <<<<<<< HEAD
+<<<<<<< HEAD
     if (com_mod.uris[0].clsFlg) {Res = com_mod.urisResClose;}
 =======
 >>>>>>> 3257cf7 (Adding implicit RIS functions for serial simulation.)
+=======
+    if (com_mod.uris[0].clsFlg) {Res = 1.0e5;}
+>>>>>>> f6358a3 (Improve the SDF function and add valve thickness and ressitance specification.)
   }
 
   double ctM  = 1.0;
