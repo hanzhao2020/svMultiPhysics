@@ -346,10 +346,7 @@ void distribute(Simulation* simulation)
     cm.bcast(cm_mod, &com_mod.urisRes);
     cm.bcast(cm_mod, &com_mod.urisResClose);
 =======
-    cm.bcast(cm_mod, &com_mod.urisFlag);
-    cm.bcast(cm_mod, &com_mod.urisActFlag);
-    cm.bcast(cm_mod, &com_mod.urisRes);
->>>>>>> 582b719 (Parallelization for implicit RIS code.)
+>>>>>>> edd5c69 (Adding option for using customized resistance value whenthe RIS valve is closed.)
     cm.bcast(cm_mod, &com_mod.usePrecomp);
     if (com_mod.rmsh.isReqd) {
       auto& rmsh = com_mod.rmsh;
