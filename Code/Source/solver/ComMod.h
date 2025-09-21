@@ -1485,7 +1485,7 @@ class urisType
     // Iteration count.
     int cnt = 1000000;
 
-    // URIS: signed distance function of each node to the uris (1D array).
+    // URIS: signed distance function of each node to the uris valves (1D array).
     Vector<double> sdf;
 
     // Mesh scale factor.
@@ -1509,6 +1509,12 @@ class urisType
     // Derived type variables
     // IB meshes
     std::vector<mshType> msh;
+
+    // Scaffold mesh
+    bool scaffold_flag = false;
+    mshType scaffold_mesh;
+
+    Vector<double> sdf_scaffold;
 
 };
 

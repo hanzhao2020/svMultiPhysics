@@ -1613,6 +1613,7 @@ class URISMeshParameters : public ParameterLists
     Parameter<double> resistance_close; // Resistance of the valve when it is closed
     Parameter<bool> valve_starts_as_closed; // Whether the valve starts as closed
     Parameter<std::string> positive_flow_normal_file_path; // File path for the positive flow normal
+    Parameter<std::string> scaffold_file_path; // File path for the scaffold
 
 };
 

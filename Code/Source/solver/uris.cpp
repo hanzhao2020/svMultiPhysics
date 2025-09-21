@@ -518,9 +518,46 @@ void uris_read_msh(Simulation* simulation) {
     }
     file_stream.close();
 
-    uris_obj.sdf_default = uris_obj.sdf_default * uris_obj.scF;
-    uris_obj.sdf_deps = param->thickness() * uris_obj.scF;
-    uris_obj.sdf_deps_close = param->close_thickness() * uris_obj.scF;
+    std::string scaffold_file_path = param->scaffold_file_path();
+    if (scaffold_file_path != "") {
+      uris_obj.scaffold_flag = true;
+      uris_obj.scaffold_mesh.lShl = true;
+      vtk_xml::read_vtu(scaffold_file_path, uris_obj.scaffold_mesh);
+      nn::select_ele(simulation->com_mod, uris_obj.scaffold_mesh);
+      read_msh_ns::check_ien(simulation, uris_obj.scaffold_mesh);
+
+      int b = 0;
+      auto& scaffold_mesh = uris_obj.scaffold_mesh;
+      scaffold_mesh.nNo = scaffold_mesh.gnNo;
+      scaffold_mesh.gN.resize(scaffold_mesh.nNo);
+      scaffold_mesh.gN = 0;
+      scaffold_mesh.lN.resize(scaffold_mesh.nNo);
+      scaffold_mesh.lN = 0;
+      for (int a = 0; a < scaffold_mesh.nNo; a++) {
+        scaffold_mesh.gN(a) = b;
+        scaffold_mesh.lN(b) = a;
+        b++;
+      }
+
+      // Remap msh%gIEN array
+      scaffold_mesh.nEl = scaffold_mesh.gnEl;
+      scaffold_mesh.IEN.resize(scaffold_mesh.eNoN, scaffold_mesh.nEl);
+      for (int e = 0; e < scaffold_mesh.nEl; e++) {
+        for (int a = 0; a < scaffold_mesh.eNoN; a++) {
+          int Ac = scaffold_mesh.gIEN(a,e);
+          Ac = scaffold_mesh.gN(Ac);
+          scaffold_mesh.IEN(a,e) = Ac;
+        }
+      }
+      scaffold_mesh.gIEN.clear();
+
+      std::cout << "Scaffold mesh is included for: " << uris_obj.name << std::endl;
+      std::cout << "Scaffold mesh nodes: " << uris_obj.scaffold_mesh.gnNo << std::endl;
+      std::cout << "Scaffold mesh elements: " << uris_obj.scaffold_mesh.gnEl << std::endl;
+    }
+
+    uris_obj.sdf_deps = param->thickness();
+    uris_obj.sdf_deps_close = param->close_thickness();
     uris_obj.clsFlg = param->valve_starts_as_closed();
 
     // uris_obj.tnNo = 0;
@@ -714,6 +751,10 @@ void uris_read_msh(Simulation* simulation) {
         }
       }
       mesh.gIEN.clear();
+
+      std::cout << "Number of uris elements nel: " << mesh.nEl << std::endl;
+      std::cout << "URIS mesh IEN size: " << mesh.IEN.nrows() << ", " << mesh.IEN.ncols() << std::endl;
+
     }
 
     if (uris_obj.nFa > 0) {
@@ -896,6 +937,8 @@ void uris_calc_sdf(ComMod& com_mod) {
   for (int iUris = 0; iUris < nUris; iUris++) {
     // We need to check if the valve needs to move 
     auto& uris_obj = uris[iUris];
+
+    // Compute the SDF for the uris valves
     int cnt = 0;
     if (!uris_obj.clsFlg) {
       cnt = std::min(uris_obj.cnt, uris_obj.DxOpen.nrows());
@@ -923,8 +966,8 @@ void uris_calc_sdf(ComMod& com_mod) {
         max_eNoN = mesh.eNoN;
       }
     }
-
     Array<double> lX(nsd, max_eNoN);
+
     // if (!uris_obj.sdf.allocated()) {
     if (uris_obj.sdf.size() <= 0) {
       uris_obj.sdf.resize(com_mod.tnNo);
@@ -987,7 +1030,9 @@ void uris_calc_sdf(ComMod& com_mod) {
         int jM = -1;
         Vector<double> xb(nsd);
         for (int iM = 0; iM < uris_obj.nFa; iM++) {
+
           auto& mesh = uris_obj.msh[iM];
+
           for (int e = 0; e < mesh.nEl; e++) {
             xb = 0.0;
             for (int a = 0; a < mesh.eNoN; a++) {
@@ -1015,6 +1060,7 @@ void uris_calc_sdf(ComMod& com_mod) {
 
         // We also need to compute the sign (above or below the valve).
         // Compute the element normal
+      
         auto& mesh = uris_obj.msh[jM];
         xXi = 0.0;
         lX = 0.0;
@@ -1069,6 +1115,97 @@ void uris_calc_sdf(ComMod& com_mod) {
       }
     }
   }
+
+
+  // Compute the SDF for the scaffold mesh
+  for (int iUris = 0; iUris < nUris; iUris++) {
+    auto& uris_obj = uris[iUris];
+    
+    if (!uris_obj.scaffold_flag || uris_obj.sdf_scaffold.size() > 0) {
+      continue;
+    }
+
+    auto& scaffold_mesh = uris_obj.scaffold_mesh;
+  
+    if (uris_obj.sdf_scaffold.size() <= 0) {
+      uris_obj.sdf_scaffold.resize(com_mod.tnNo);
+      uris_obj.sdf_scaffold = 0.0;
+    }
+    uris_obj.sdf_scaffold = uris_obj.sdf_default;
+
+    Vector<double> minb_scaf(nsd);
+    Vector<double> maxb_scaf(nsd);
+    Vector<double> extra_scaf(nsd);
+    for (int i = 0; i < nsd; i++) {
+      minb_scaf(i) = std::numeric_limits<double>::max();
+      maxb_scaf(i) = std::numeric_limits<double>::lowest();
+    }
+
+    // For each coordinate dimension, find the minimum and maximum in uris_obj.x.
+    double extra_scaf_val = 0.1;  // [HZ] The BBox is 10% larger than the actual valve, default is 0.1
+    for (int i = 0; i < nsd; i++) {
+      for (int j = 0; j < scaffold_mesh.x.ncols(); j++) {
+        double val = scaffold_mesh.x(i,j);
+        if (val < minb_scaf(i))
+            minb_scaf(i) = val;
+        if (val > maxb_scaf(i))
+            maxb_scaf(i) = val;
+      }
+      extra_scaf(i) = (maxb_scaf(i) - minb_scaf(i)) * extra_scaf_val;
+    }
+
+    // The SDF is computed on the reference configuration, which
+    // means that the valves will be morphed based on the fluid mesh
+    // motion. If the fluid mesh stretches near the valve, the valve
+    // leaflets will also be streched. Note that
+    // this is a simplifying assumption. 
+    Vector<double> xp_scaf(nsd);
+    for (int ca = 0; ca < com_mod.tnNo; ca++) {
+      // std::cout << "URIS scaffold SDF index: " << ca << std::endl;
+      double minS_scaf = std::numeric_limits<double>::max();
+      for (int i = 0; i < nsd; i++) {
+        xp_scaf(i) = com_mod.x(i,ca);
+      }
+      // Is the node inside the BBox?
+      bool inside = true;
+      for (int i = 0; i < nsd; i++) {
+        if (xp_scaf(i) < (minb_scaf(i) - extra_scaf(i)) || xp_scaf(i) > (maxb_scaf(i) + extra_scaf(i))) {
+          inside = false;
+          break;
+        }
+      }
+
+      if (inside) {
+        // This point is inside the BBox
+        // Find the closest URIS face centroid
+        Vector<double> xb_scaf(nsd);
+
+        for (int e = 0; e < scaffold_mesh.nEl; e++) {
+          xb_scaf = 0.0;
+          for (int a = 0; a < scaffold_mesh.eNoN; a++) {
+            int Ac = scaffold_mesh.IEN(a,e);
+            for (int i = 0; i < nsd; i++) {
+              xb_scaf(i) += scaffold_mesh.x(i,Ac);
+            }
+          }
+          for (int i = 0; i < nsd; i++) {
+            xb_scaf(i) /= static_cast<double>(scaffold_mesh.eNoN);
+          }
+          double dS_scaf = 0.0;
+          for (int i = 0; i < nsd; i++) {
+            dS_scaf += (xp_scaf[i] - xb_scaf[i]) * (xp_scaf[i] - xb_scaf[i]);
+          }
+          dS_scaf = std::sqrt(dS_scaf);
+
+          if (dS_scaf < minS_scaf) {
+            minS_scaf = dS_scaf;
+          }
+        }
+        uris_obj.sdf_scaffold[ca] = minS_scaf;
+      }
+    }
+  }
+
 }
 
 
@@ -1177,8 +1314,8 @@ int in_poly(Vector<double>& P, Array<double>& P1, bool ext) {
 /// @brief Chech if a point is on the same side of anotehr point wrt a triangle in 3D
 int same_side(Vector<double>& v1, Vector<double>& v2, Vector<double>& v3,
               Vector<double>& v4, Vector<double>& p, bool ext) {
-  #define n_dbg_read_sv
-  #ifdef dbg_read_sv
+  #define n_dbg_same_side
+  #ifdef dbg_same_side
     DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
     dmsg.banner();
     dmsg << "checking same side";

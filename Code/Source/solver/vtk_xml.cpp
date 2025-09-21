@@ -969,6 +969,12 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
   if (com_mod.urisFlag) {
     nOut = nOut + com_mod.nUris;
     outDof = outDof + com_mod.nUris;
+    for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
+      if (com_mod.uris[iUris].scaffold_flag) {
+        nOut = nOut + 1;
+        outDof = outDof + 1;
+      }
+    }
   }
 
   std::vector<std::string> outNames(nOut); 
@@ -1291,11 +1297,26 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
         int ie = is;
         outS[cOut+1] = ie + 1;
         outNames[cOut] = "URIS_SDF_" + com_mod.uris[iUris].name;
+        // outNames[cOut] = "URIS_SDF_SCAF_" + com_mod.uris[iUris].name;
         
         for (int a = 0; a < msh.nNo; a++) {
           int Ac = msh.gN(a);
           d[iM].x(is,a) = static_cast<double>(com_mod.uris[iUris].sdf(Ac));
+          // d[iM].x(is,a) = static_cast<double>(com_mod.uris[iUris].sdf_scaffold(Ac));
         }
+
+        if (com_mod.uris[iUris].scaffold_flag) {
+          cOut = cOut + 1;
+          int is = outS[cOut];
+          int ie = is;
+          outS[cOut+1] = ie + 1;
+          outNames[cOut] = "URIS_SDF_SCAF_" + com_mod.uris[iUris].name;
+          for (int a = 0; a < msh.nNo; a++) {
+            int Ac = msh.gN(a);
+            d[iM].x(is,a) = static_cast<double>(com_mod.uris[iUris].sdf_scaffold(Ac));
+          }
+        }
+
       } 
     } 
 

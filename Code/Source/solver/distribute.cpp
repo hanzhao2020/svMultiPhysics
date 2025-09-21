@@ -1175,6 +1175,32 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, &uris[iUris].cnt);
     cm.bcast(cm_mod, &uris[iUris].scF);
     cm.bcast(cm_mod, uris[iUris].nrm);
+
+    cm.bcast(cm_mod, &uris[iUris].scaffold_flag);
+    if (uris[iUris].scaffold_flag) {
+      cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.lShl);
+      cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.nEl);
+      cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.gnEl);
+      cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.eNoN);
+      cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.nNo);
+      cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.gnNo);
+    }
+  }
+
+  if (cm.slv(cm_mod)) {
+    for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
+      if (uris[iUris].scaffold_flag) {
+        uris[iUris].scaffold_mesh.x.resize(com_mod.nsd, uris[iUris].scaffold_mesh.gnNo);
+        uris[iUris].scaffold_mesh.IEN.resize(uris[iUris].scaffold_mesh.eNoN, uris[iUris].scaffold_mesh.gnEl);
+      }
+    }
+  }
+
+  for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
+    if (uris[iUris].scaffold_flag) {
+      cm.bcast(cm_mod, uris[iUris].scaffold_mesh.x);
+      cm.bcast(cm_mod, uris[iUris].scaffold_mesh.IEN);
+    }
   }
 
   std::vector<Vector<int>> lM_gN_flat(com_mod.nUris);

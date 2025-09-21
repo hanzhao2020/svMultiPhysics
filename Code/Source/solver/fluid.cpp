@@ -651,17 +651,22 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
       // Plot the coordinates of the quad point in the current configuration
       if (com_mod.urisFlag) {
         Vector<double> distSrf(com_mod.nUris);
+        Vector<double> distSrf_scaffold(com_mod.nUris);
         distSrf = 0.0;
+        distSrf_scaffold = 0.0;
         for (int a = 0; a < eNoN; a++) {
           int Ac = lM.IEN(a,e);
           for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
             distSrf(iUris) += fs[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
+            if (com_mod.uris[iUris].scaffold_flag) {
+              distSrf_scaffold(iUris) += fs[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf_scaffold(Ac));
+            }
           }
         }
 
         DDir = 0.0;
+        double sdf_deps_temp = 0;
         double DDirTmp = 0.0;
-        double sdf_deps_temp = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
           if (com_mod.uris[iUris].clsFlg) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
@@ -673,8 +678,16 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
                       (2*sdf_deps_temp*sdf_deps_temp);
             if (DDirTmp > DDir) {DDir = DDirTmp;}
           }
-        }
 
+          if (com_mod.uris[iUris].scaffold_flag) {
+            sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+          }
+          if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
+            DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
+                      (2*sdf_deps_temp*sdf_deps_temp);
+            if (DDirTmp > DDir) {DDir = DDirTmp;}
+          }
+        }
         if (!com_mod.urisActFlag) {DDir = 0.0;}
       }
 
