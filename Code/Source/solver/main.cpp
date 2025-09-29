@@ -371,6 +371,51 @@ void iterate_solution(Simulation* simulation)
     int reply;
     int iEqOld;
 
+    // std::cout << "** com_mod.timeConsistentVMS: " << com_mod.timeConsistentVMS << std::endl;
+    // std::cout << "Yo size: " << com_mod.Yo.nrows() << " x " << com_mod.Yo.ncols() << std::endl;
+    // std::cout << "Ao size: " << com_mod.Ao.nrows() << " x " << com_mod.Ao.ncols() << std::endl;
+    // std::cout << "tnNo: " << com_mod.tnNo << std::endl;
+    if (com_mod.timeConsistentVMS) {
+      double omega = 0.0;
+      if (cTS <= 1) {
+        omega = 2.0 / com_mod.dt;
+      }
+      else {
+        Array<double> vo2, ao2;
+        vo2.resize(1, simulation->com_mod.Yo.ncols());
+        ao2.resize(1, simulation->com_mod.Ao.ncols());
+        vo2 = 0.0;
+        ao2 = 0.0;
+        
+        for (int i = 0; i < simulation->com_mod.Yo.ncols(); i++) {
+          vo2(0,i) = simulation->com_mod.Yo(0,i)*simulation->com_mod.Yo(0,i)
+                  + simulation->com_mod.Yo(1,i)*simulation->com_mod.Yo(1,i)
+                  + simulation->com_mod.Yo(2,i)*simulation->com_mod.Yo(2,i);
+        }
+        for (int i = 0; i < simulation->com_mod.Ao.ncols(); i++) {
+          ao2(0,i) = simulation->com_mod.Ao(0,i)*simulation->com_mod.Ao(0,i)
+                  + simulation->com_mod.Ao(1,i)*simulation->com_mod.Ao(1,i)
+                  + simulation->com_mod.Ao(2,i)*simulation->com_mod.Ao(2,i);
+        }
+    
+        double vo2_norm, ao2_norm;
+        vo2_norm = all_fun::integ(simulation->com_mod, simulation->cm_mod, 0, vo2);
+        ao2_norm = all_fun::integ(simulation->com_mod, simulation->cm_mod, 0, ao2);
+    
+        omega = sqrt(ao2_norm) / sqrt(vo2_norm);
+        // if (simulation->com_mod.cm.mas(simulation->cm_mod)) {
+        //   std::cout << "-- vo2_norm: " << sqrt(vo2_norm) << std::endl;
+        //   std::cout << "-- ao2_norm: " << sqrt(ao2_norm) << std::endl;
+        //   std::cout << "-- omega: " << omega << std::endl;
+        // }
+      }
+      com_mod.spectralModeStab = omega;
+      if (simulation->com_mod.cm.mas(simulation->cm_mod)) {
+        std::cout << "** cTS: " << cTS << std::endl;
+        std::cout << "** com_mod.spectralModeStab: " << com_mod.spectralModeStab << std::endl;
+      }
+    }
+
     // Looping over Newton iterations
     while (true) { 
       #ifdef debug_iterate_solution
@@ -929,6 +974,28 @@ int main(int argc, char *argv[])
 
     // Run the simulation.
     run_simulation(simulation);
+
+    Array<double> v2, p2;
+    v2.resize(1, simulation->com_mod.Yn.ncols());
+    p2.resize(1, simulation->com_mod.Yn.ncols());
+    v2 = 0.0;
+    p2 = 0.0;
+    for (int i = 0; i < simulation->com_mod.Yn.ncols(); i++) {
+      v2(0,i) = simulation->com_mod.Yn(0,i)*simulation->com_mod.Yn(0,i)
+          + simulation->com_mod.Yn(1,i)*simulation->com_mod.Yn(1,i)
+          + simulation->com_mod.Yn(2,i)*simulation->com_mod.Yn(2,i);
+      
+      p2(0,i) = simulation->com_mod.Yn(3,i)*simulation->com_mod.Yn(3,i);
+    }
+
+    double v2_norm, p2_norm;
+    v2_norm = all_fun::integ(simulation->com_mod, simulation->cm_mod, 0, v2);
+    p2_norm = all_fun::integ(simulation->com_mod, simulation->cm_mod, 0, p2);
+    
+  if (simulation->com_mod.cm.mas(simulation->cm_mod)) {
+    std::cout << "v2_norm: " << sqrt(v2_norm) << std::endl;
+    std::cout << "p2_norm: " << sqrt(p2_norm) << std::endl;
+  }
 
     #ifdef debug_main
     dmsg << "resetSim: " << simulation->com_mod.resetSim;

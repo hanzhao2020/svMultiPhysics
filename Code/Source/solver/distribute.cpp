@@ -87,6 +87,8 @@ void distribute(Simulation* simulation)
   } 
 
   cm.bcast(cm_mod, &com_mod.gtnNo);
+  cm.bcast(cm_mod, &com_mod.timeConsistentVMS);
+  cm.bcast(cm_mod, &com_mod.spectralModeStab);
 
   if (cm.slv(cm_mod)) {
     com_mod.msh.resize(com_mod.nMsh);

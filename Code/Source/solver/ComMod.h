@@ -1605,6 +1605,12 @@ class ComMod {
     /// @brief Postprocess step - convert bin to vtk
     bool bin2VTK = false;
 
+    /// @brief Whether to use time-consistent VMS
+    bool timeConsistentVMS = false;
+
+    /// @brief Sepctral model Omega value for time-consistent VMS
+    double spectralModeStab = 0.0;
+
     /// @brief Whether any RIS surface is considered 
     bool risFlag = false;
 

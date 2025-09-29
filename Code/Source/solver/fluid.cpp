@@ -1013,7 +1013,13 @@ void fluid_2d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
 
   if (vmsFlag) {
     // Stabilization parameters
-    double kT = 4.0 * pow(ctM/dt,2.0);
+    double kT = 0.0;
+    if (com_mod.timeConsistentVMS) {
+      kT = pow(com_mod.spectralModeStab, 2.0);
+    }
+    else {
+      kT = 4.0 * pow(ctM/dt,2.0);
+    }
     
     // If we consider the NSB model, we need to add an extra term inside the computation for the stab parameter 
     kT = kT + pow(K_inverse_darcy_permeability*mu/rho, 2.0);  
@@ -1301,7 +1307,13 @@ void fluid_2d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
   //mu_x(:) = mu_g * mu_x(:)
 
   //  Stabilization parameters
-  double kT = 4.0 * pow(ctM/dt,2.0);
+  double kT = 0.0;
+  if (com_mod.timeConsistentVMS) {
+    kT = pow(com_mod.spectralModeStab, 2.0);
+  }
+  else {
+    kT = 4.0 * pow(ctM/dt,2.0);
+  }
   
   // If we consider the NSB model, we need to add an extra term inside the computation for the stab parameter 
   kT = kT + pow(K_inverse_darcy_permeability*mu/rho, 2.0);
@@ -1684,7 +1696,13 @@ void fluid_3d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
 
   if (vmsFlag) {
     // Stabilization parameters
-    double kT = 4.0 * pow(ctM/dt,2.0);
+    double kT = 0.0;
+    if (com_mod.timeConsistentVMS) {
+      kT = pow(com_mod.spectralModeStab, 2.0);
+    }
+    else {
+      kT = 4.0 * pow(ctM/dt,2.0);
+    }
     
     // If we consider the NSB model, we need to add an extra term inside the computation for the stab parameter 
     kT = kT + pow(K_inverse_darcy_permeability*mu/rho, 2.0); 
@@ -2037,7 +2055,13 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
 
   // Stabilization parameters
   //
-  double kT = 4.0 * pow(ctM/dt,2.0);
+  double kT = 0.0;
+  if (com_mod.timeConsistentVMS) {
+    kT = pow(com_mod.spectralModeStab, 2.0);
+  }
+  else {
+    kT = 4.0 * pow(ctM/dt,2.0);
+  }
   
   // If we consider the NSB model, we need to add an extra term inside the computation for the stab parameter 
   kT = kT + pow(K_inverse_darcy_permeability*mu/rho, 2.0);   

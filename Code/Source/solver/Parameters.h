@@ -1196,6 +1196,8 @@ class DomainParameters : public ParameterLists
     //Parameter<std::string> constitutive_model_name;
     Parameter<double> continuity_stabilization_coefficient;
 
+    Parameter<bool> time_consistent_vms;
+
     Parameter<double> density;
     Parameter<std::string> dilational_penalty_model;
 

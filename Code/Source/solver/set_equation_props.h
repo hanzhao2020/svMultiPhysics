@@ -226,6 +226,8 @@ SetEquationPropertiesMapType set_equation_props = {
     propL[5][0] = PhysicalProperyType::f_z;
   }
 
+  propL[6][0] = PhysicalProperyType::time_consistent_vms;
+
   // Set fluid domain properties.
   read_domain(simulation, eq_params, lEq, propL);
 

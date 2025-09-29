@@ -1221,6 +1221,7 @@ void read_domain(Simulation* simulation, EquationParameters* eq_params, eqType& 
 
   for (int iDmn = 0; iDmn < lEq.nDmn; iDmn++) {
      auto& domain_params = (eq_params->domains.size() == 0 ? eq_params->default_domain : eq_params->domains[iDmn]);
+     
      if (flag) {
         // If no domain keywork found, we search upper level for data
         lEq.dmn[iDmn].Id = -1;
@@ -1342,6 +1343,10 @@ void read_domain(Simulation* simulation, EquationParameters* eq_params, eqType& 
 
           case PhysicalProperyType::inverse_darcy_permeability:
             rtmp = domain_params->inverse_darcy_permeability.value();
+          break;
+
+          case PhysicalProperyType::time_consistent_vms:
+            simulation->com_mod.timeConsistentVMS = domain_params->time_consistent_vms.value();
           break;
         }
 

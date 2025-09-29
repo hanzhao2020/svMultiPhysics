@@ -1602,6 +1602,8 @@ DomainParameters::DomainParameters()
   //set_parameter("Constitutive_model", "", !required, constitutive_model);
   set_parameter("Continuity_stabilization_coefficient", 0.0, !required, continuity_stabilization_coefficient);
 
+  set_parameter("Time_consistent_VMS", false, !required, time_consistent_vms);
+
   set_parameter("Density", 0.5, !required, density);
   set_parameter("Dilational_penalty_model", "", !required, dilational_penalty_model);
 
