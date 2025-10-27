@@ -669,9 +669,32 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
         double DDirTmp = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
           if (com_mod.uris[iUris].clsFlg) {
-            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+            // Gradual transition using quadratic interpolation
+            if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxClose.nrows()) {
+              // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxClose.nrows() steps
+              double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
+                               static_cast<double>(com_mod.uris[iUris].DxClose.nrows());
+              // Quadratic interpolation: smooth transition
+              double quad_progress = progress * progress;
+              sdf_deps_temp = com_mod.uris[iUris].sdf_deps + 
+                            quad_progress * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
+            } else {
+              sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+            }
           } else {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+            // // Gradual transition using quadratic interpolation
+            // if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxOpen.nrows()) {
+            //   // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxOpen.nrows() steps
+            //   double progress = static_cast<double>(com_mod.uris[iUris].DxOpen.nrows() - com_mod.uris[iUris].cnt) / 
+            //                    static_cast<double>(com_mod.uris[iUris].DxOpen.nrows());
+            //   // Quadratic interpolation: smooth transition
+            //   double quad_progress = progress * progress;
+            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps + 
+            //                 quad_progress * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
+            // } else {
+            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+            // }
           }
           if (distSrf(iUris) <= sdf_deps_temp) {
             DDirTmp = (1 + cos(pi*distSrf(iUris)/sdf_deps_temp))/
@@ -681,11 +704,12 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
 
           if (com_mod.uris[iUris].scaffold_flag) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
-          }
-          if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
-            DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
-                      (2*sdf_deps_temp*sdf_deps_temp);
-            if (DDirTmp > DDir) {DDir = DDirTmp;}
+          
+            if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
+              DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
+                        (2*sdf_deps_temp*sdf_deps_temp);
+              if (DDirTmp > DDir) {DDir = DDirTmp;}
+            }
           }
         }
         if (!com_mod.urisActFlag) {DDir = 0.0;}
