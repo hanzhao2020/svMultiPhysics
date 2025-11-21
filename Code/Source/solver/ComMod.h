@@ -135,9 +135,6 @@ class bcType
     // Strong/Weak application of Dirichlet BC
     int clsFlgRis = 0;
 
-    // Strong/Weak application of Dirichlet BC
-    int clsFlgRis = 0;
-
     // Pre/Res/Flat/Para... boundary types
     //
     // This stores differnt BCs as bitwise values. 
@@ -167,9 +164,6 @@ class bcType
 
     // Robin: VTP file path for per-node stiffness and damping
     std::string robin_vtp_file = "";
-
-    // RIS0D: resistance
-    double resistance = 0.0;
 
     // RIS0D: resistance
     double resistance = 0.0;
@@ -1458,6 +1452,15 @@ class urisType
     // Position coordinates (2D array: rows x columns).
     Array<double> x;
 
+    // Position coordinates of last time step.
+    Array<double> x_prev;
+
+    // Position coordinates of next time step.
+    Array<double> x_next;
+
+    // Time derivative of the position coordinates (2D array).
+    Array<double> v;
+
     // Displacement (new) (2D array).
     Array<double> Yd;
 
@@ -1467,8 +1470,11 @@ class urisType
     // Default distance value of the valve boundary (valve thickness).
     double sdf_deps = 0.25;
 
-    // Default distance value of the valve boundary when the valve is closed.
-    double sdf_deps_close = 0.25;
+    // Default half valve thickness when valve is closed.
+    double sdf_deps_close = 0.2;
+
+    // Default half scaffold thickness.
+    double sdf_deps_scaffold = 0.1;
 
     // Displacements of the valve when it opens (3D array).
     Array3<double> DxOpen;
@@ -1486,7 +1492,13 @@ class urisType
     int cnt = 1000000;
 
     // URIS: signed distance function of each node to the uris valves (1D array).
+    Vector<double> dirac_delta_func;
+
+    // URIS: signed distance function of each node to the uris valves (1D array).
     Vector<double> sdf;
+
+    // URIS: time derivative of the signed distance field       
+    Array<double> sdf_t;
 
     // Mesh scale factor.
     double scF = 1.0;

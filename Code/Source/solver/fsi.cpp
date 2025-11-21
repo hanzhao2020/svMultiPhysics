@@ -79,6 +79,13 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
   double struct_3d_time = 0.0;
   double fluid_3d_time = 0.0;
   double DDir = 0.0;
+  Array<double> vValve;
+  if (com_mod.urisFlag) {
+    vValve.resize(com_mod.nUris, nsd);
+  } else {
+    vValve.resize(0, 0);
+  }
+  vValve = 0.0;
 
   for (int e = 0; e < lM.nEl; e++) {
     // setting globals
@@ -196,6 +203,9 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
           int Ac = lM.IEN(a,e);
           for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
             distSrf(iUris) += fs_1[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
+            for (int i = 0; i < nsd; i++) {
+              vValve(iUris,i) += fs_1[0].N(a,g) * com_mod.uris[iUris].sdf_t(i, Ac);
+            }
             if (com_mod.uris[iUris].scaffold_flag) {
               distSrf_scaffold(iUris) += fs_1[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf_scaffold(Ac));
             }
@@ -207,18 +217,19 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
         double DDirTmp = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
           if (com_mod.uris[iUris].clsFlg) {
-            // Gradual transition using quadratic interpolation
-            if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxClose.nrows()) {
-              // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxClose.nrows() steps
-              double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
-                               static_cast<double>(com_mod.uris[iUris].DxClose.nrows());
-              // Quadratic interpolation: smooth transition
-              double quad_progress = progress * progress;
-              sdf_deps_temp = com_mod.uris[iUris].sdf_deps + 
-                            quad_progress * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
-            } else {
-              sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
-            }
+            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+            // // Gradual transition using quadratic interpolation
+            // if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxClose.nrows()) {
+            //   // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxClose.nrows() steps
+            //   double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
+            //                    static_cast<double>(com_mod.uris[iUris].DxClose.nrows());
+            //   // Quadratic interpolation: smooth transition
+            //   double quad_progress = progress * progress;
+            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps + 
+            //                 quad_progress * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
+            // } else {
+            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+            // }
           } else {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
             // // Gradual transition using quadratic interpolation
@@ -241,7 +252,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
           }
 
           if (com_mod.uris[iUris].scaffold_flag) {
-            sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_scaffold;
           
             if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
               DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
@@ -263,7 +274,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             // fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
-            fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir);
+            fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir, vValve);
 
           } break;
 
@@ -341,7 +352,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             //fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
-            fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir);
+            fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir, vValve);
           } break;
 
           case Equation_ustruct:

@@ -967,8 +967,8 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
 
   // SDF for each URIS
   if (com_mod.urisFlag) {
-    nOut = nOut + com_mod.nUris;
-    outDof = outDof + com_mod.nUris;
+    nOut = nOut + com_mod.nUris * 2;
+    outDof = outDof + com_mod.nUris * (1 + nsd);
     for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
       if (com_mod.uris[iUris].scaffold_flag) {
         nOut = nOut + 1;
@@ -1292,19 +1292,31 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
     if (com_mod.urisFlag) {
       for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
         cOut = cOut + 1;
-        // std::cout << "uris cOut:" << cOut << std::endl;
-        int is = outS[cOut];
+        int is = outS[cOut]; 
         int ie = is;
         outS[cOut+1] = ie + 1;
         outNames[cOut] = "URIS_SDF_" + com_mod.uris[iUris].name;
-        // outNames[cOut] = "URIS_SDF_SCAF_" + com_mod.uris[iUris].name;
-        
         for (int a = 0; a < msh.nNo; a++) {
           int Ac = msh.gN(a);
           d[iM].x(is,a) = static_cast<double>(com_mod.uris[iUris].sdf(Ac));
-          // d[iM].x(is,a) = static_cast<double>(com_mod.uris[iUris].sdf_scaffold(Ac));
         }
+      }
 
+      for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
+        cOut = cOut + 1;
+        int is = outS[cOut];
+        int ie = is + nsd - 1; 
+        outS[cOut+1] = ie + 1;
+        outNames[cOut] = "URIS_SDF_VEL_" + com_mod.uris[iUris].name;
+        for (int a = 0; a < msh.nNo; a++) {
+          int Ac = msh.gN(a);
+          for (int b = is; b <= ie; b++) {
+            d[iM].x(b,a) = static_cast<double>(com_mod.uris[iUris].sdf_t(b-is, Ac));
+          }
+        }
+      }  
+
+      for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
         if (com_mod.uris[iUris].scaffold_flag) {
           cOut = cOut + 1;
           int is = outS[cOut];
@@ -1316,9 +1328,8 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
             d[iM].x(is,a) = static_cast<double>(com_mod.uris[iUris].sdf_scaffold(Ac));
           }
         }
-
-      } 
-    } 
+      }
+    }
 
   } // iM for loop 
 

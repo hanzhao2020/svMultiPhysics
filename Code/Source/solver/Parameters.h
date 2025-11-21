@@ -1643,9 +1643,6 @@ class Parameters {
     void set_RIS_projection_values(tinyxml2::XMLElement* root_element);
     void set_URIS_mesh_values(tinyxml2::XMLElement* root_element);
 
-    void set_RIS_projection_values(tinyxml2::XMLElement* root_element);
-    void set_URIS_mesh_values(tinyxml2::XMLElement* root_element);
-
     // Objects representing each parameter section of XML file.
     ContactParameters contact_parameters;
     GeneralSimulationParameters general_simulation_parameters;

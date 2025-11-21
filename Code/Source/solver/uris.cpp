@@ -54,8 +54,6 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
 
   // Let's compute left side 
   Array<double> sUPS(1,com_mod.tnNo);
-  // std::cout << "com_mod.tnNo: " << com_mod.tnNo << std::endl;
-  // std::cout << "uris_obj.sdf size: " << uris_obj.sdf.size() << std::endl;
 
   sUPS = 0.0;
   for (size_t j = 0; j < sUPS.size(); j++) {
@@ -481,7 +479,7 @@ void uris_read_msh(Simulation* simulation) {
   com_mod.urisResClose = param->resistance_close();
 
   std::cout << "URIS resistance: " << com_mod.urisRes << std::endl;
-  std::cout << "URIS resistance when the valve is closed: " << com_mod.urisResClose << std::endl;
+  std::cout << "URIS resistance (closed): " << com_mod.urisResClose << std::endl;
 
   int nUris = simulation->parameters.URIS_mesh_parameters.size();
   com_mod.nUris = nUris;
@@ -502,11 +500,7 @@ void uris_read_msh(Simulation* simulation) {
     Array<double> gX(0,0);
 
     std::string positive_flow_normal_file_path = param->positive_flow_normal_file_path();
-    // [HZ] Need to read flow normal file (*.dat) into uris_obj.nrm
-    // lPtr => lPM%get(fTmp, "Positive flow normal file")
-    // fid = fTmp%open()
-    // READ (fid,*) uris(iUris)%nrm(:)
-    // CLOSE (fid)
+
     std::ifstream file_stream;
     file_stream.open(positive_flow_normal_file_path);
     if (!file_stream.is_open()) {
@@ -550,19 +544,13 @@ void uris_read_msh(Simulation* simulation) {
         }
       }
       scaffold_mesh.gIEN.clear();
-
-      std::cout << "Scaffold mesh is included for: " << uris_obj.name << std::endl;
-      std::cout << "Scaffold mesh nodes: " << uris_obj.scaffold_mesh.gnNo << std::endl;
-      std::cout << "Scaffold mesh elements: " << uris_obj.scaffold_mesh.gnEl << std::endl;
     }
 
     uris_obj.sdf_deps = param->thickness();
     uris_obj.sdf_deps_close = param->close_thickness();
     uris_obj.clsFlg = param->valve_starts_as_closed();
 
-    // uris_obj.tnNo = 0;
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
-      // Set as shell
       auto mesh_param = param->URIS_face_parameters[iM];
       auto& mesh = uris_obj.msh[iM];
       mesh.lShl = true;
@@ -600,8 +588,6 @@ void uris_read_msh(Simulation* simulation) {
       }
       int dispNtOpen, dispNnOpen;
       file_stream >> dispNtOpen >> dispNnOpen;
-      // std::cout << "dispNtOpen: " << dispNtOpen << std::endl;
-      // std::cout << "dispNnOpen: " << dispNnOpen << std::endl;
 
       if (dispNnOpen != mesh.gnNo) {
         throw std::runtime_error("Mismatch in node numbers between URIS mesh and displacements.");
@@ -612,7 +598,6 @@ void uris_read_msh(Simulation* simulation) {
         for (int a = 0; a < dispNnOpen; a++) {
           for (int i = 0; i < nsd; i++) {
             file_stream >> dispOpen(t,i,a);
-            // std::cout << "dispOpen: " << dispOpen(t,n,a) << std::endl;
           }
         }
       }
@@ -627,8 +612,6 @@ void uris_read_msh(Simulation* simulation) {
       }
       int dispNtClose, dispNnClose;
       file_stream >> dispNtClose >> dispNnClose;
-      // std::cout << "dispNtClose: " << dispNtClose << std::endl;
-      // std::cout << "dispNnClose: " << dispNnClose << std::endl;
 
       if (dispNnClose != mesh.gnNo) {
         throw std::runtime_error("Mismatch in node numbers between URIS mesh and displacements.");
@@ -639,7 +622,6 @@ void uris_read_msh(Simulation* simulation) {
         for (int a = 0; a < dispNnClose; a++) {
           for (int i = 0; i < nsd; i++) {
             file_stream >> dispClose(t,i,a);
-            // std::cout << "dispClose: " << dispClose(t,n,a) << std::endl;
           }
         }
       }
@@ -647,9 +629,6 @@ void uris_read_msh(Simulation* simulation) {
 
       // To scale the mesh, while attaching x to gX
       int a = uris_obj.tnNo + mesh.gnNo;
-      // std::cout << "uris obj tnNo: " << uris_obj.tnNo << std::endl;
-      // std::cout << "mesh gnNo: " << mesh.gnNo << std::endl;
-      // std::cout << "mesh x size: " << mesh.x.nrows() << ", " << mesh.x.ncols() << std::endl;
 
       if (iM == 0) {
         gX.resize(nsd, a);
@@ -714,7 +693,29 @@ void uris_read_msh(Simulation* simulation) {
       // dispClose.clear();
     }
     uris_obj.x.resize(nsd, uris_obj.tnNo);
-    uris_obj.x = gX;
+    uris_obj.x_prev.resize(nsd, uris_obj.tnNo);
+    uris_obj.x_next.resize(nsd, uris_obj.tnNo);
+    if (!uris_obj.clsFlg) {
+      int nrowsDxOpen = uris_obj.DxOpen.nrows();
+      for (int i = 0; i < uris_obj.x.nrows(); i++) {
+        for (int j = 0; j < uris_obj.x.ncols(); j++) {
+          uris_obj.x(i,j) = uris_obj.DxOpen(nrowsDxOpen-1,i,j);
+          uris_obj.x_prev(i,j) = uris_obj.DxOpen(nrowsDxOpen-1,i,j);
+          uris_obj.x_next(i,j) = uris_obj.DxOpen(nrowsDxOpen-1,i,j);
+        }
+      }
+    } else {
+      int nrowsDxClose = uris_obj.DxClose.nrows();
+      for (int i = 0; i < uris_obj.x.nrows(); i++) {
+        for (int j = 0; j < uris_obj.x.ncols(); j++) {
+          uris_obj.x(i,j) = uris_obj.DxClose(nrowsDxClose-1,i,j);
+          uris_obj.x_prev(i,j) = uris_obj.DxClose(nrowsDxClose-1,i,j);
+          uris_obj.x_next(i,j) = uris_obj.DxClose(nrowsDxClose-1,i,j);
+        }
+      }
+    }
+    uris_obj.v.resize(nsd, uris_obj.tnNo);
+    uris_obj.v = 0.0;
     uris_obj.Yd.resize(nsd, uris_obj.tnNo);
     uris_obj.Yd = 0.0;
     // gX.clear();
@@ -786,8 +787,8 @@ void uris_write_vtus(ComMod& com_mod) {
   const int nsd = com_mod.nsd;
   const int nUris = com_mod.nUris;
 
-  // we plot coord + displacement
-  int nOut = 2;
+  // we plot coord + displacement + velocity
+  int nOut = 3;
   int outDof = nOut * nsd;
   std::vector<std::string> outNames(nOut);
   Vector<int> outS(nOut+1);
@@ -802,11 +803,8 @@ void uris_write_vtus(ComMod& com_mod) {
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
       auto& mesh = uris_obj.msh[iM];
       int cOut = 0;
-      outS(cOut) = 0; // [HZ] Need to check this if it's 1 or 0
+      outS(cOut) = 0;
       outS(cOut+1) = nsd;
-      // outNames[cOut] = "";
-
-      // outS = [0, 3]
 
       if (mesh.eType == ElementType::NRB) {
         throw std::runtime_error("Outputs for NURBS data is under development.");
@@ -839,8 +837,6 @@ void uris_write_vtus(ComMod& com_mod) {
       int is = outS(cOut); // is = outS[1] = 3
       int ie = is + l; // ie = 3 + 3 = 6
       outS(cOut+1) = ie; // outS[2] = 7, outS = [0, 3, 6]
-      outNames[0] = "coordinates";
-      outNames[1] = "URIS_displacement";
 
       for (int a = 0; a < mesh.nNo; a++) {
         int Ac = mesh.gN(a);
@@ -848,6 +844,24 @@ void uris_write_vtus(ComMod& com_mod) {
           d[iM].x(is+i,a) = uris_obj.Yd(s+i,Ac) / uris_obj.scF; // [HZ] Need to check this
         }
       }
+
+      // For velocity
+      cOut += 1; // cOut = 2
+      is = outS(cOut); // is = outS[2] = 6
+      ie = is + l; // ie = 6 + 3 = 9
+      outS(cOut+1) = ie; // outS[3] = 7, outS = [0, 3, 6, 9]
+
+      for (int a = 0; a < mesh.nNo; a++) {
+        int Ac = mesh.gN(a);
+        for (int i = 0; i < nsd; i++) {
+          d[iM].x(is+i,a) = uris_obj.v(s+i,Ac);
+        }
+      }
+
+      // [HZ] Need to check this if it's 1 or 0 
+      outNames[0] = "coordinates";
+      outNames[1] = "URIS_displacement";
+      outNames[2] = "URIS_velocity";
 
       nNo += mesh.nNo;
       nEl += mesh.nEl;
@@ -927,6 +941,11 @@ void uris_calc_sdf(ComMod& com_mod) {
   dmsg.banner();
   #endif
 
+  using namespace consts;
+
+  int cEq = com_mod.cEq;
+  auto& eq = com_mod.eq[cEq];
+
   auto& cm = com_mod.cm;
   auto& uris = com_mod.uris;
   const int nsd = com_mod.nsd;
@@ -945,6 +964,17 @@ void uris_calc_sdf(ComMod& com_mod) {
       for (int i = 0; i < uris_obj.x.nrows(); i++) {
         for (int j = 0; j < uris_obj.x.ncols(); j++) {
           uris_obj.x(i,j) = uris_obj.DxOpen(cnt-1,i,j);
+          // Obtain x_n-1 and x_n+1 from the displacement history
+          if (cnt == uris_obj.DxOpen.nrows()) {
+            uris_obj.x_next(i,j) = uris_obj.DxOpen(cnt-1,i,j);
+          } else {
+            uris_obj.x_next(i,j) = uris_obj.DxOpen(cnt,i,j);
+          }
+          if (cnt == 1) {
+            uris_obj.x_prev(i,j) = uris_obj.DxOpen(cnt-1,i,j);
+          } else {
+            uris_obj.x_prev(i,j) = uris_obj.DxOpen(cnt-2,i,j);
+          }
         }
       }
     } else {
@@ -952,12 +982,38 @@ void uris_calc_sdf(ComMod& com_mod) {
       for (int i = 0; i < uris_obj.x.nrows(); i++) {
         for (int j = 0; j < uris_obj.x.ncols(); j++) {
           uris_obj.x(i,j) = uris_obj.DxClose(cnt-1,i,j);
+          // Obtain x_n-1 and x_n+1 from the displacement history
+          if (cnt == uris_obj.DxClose.nrows()) {
+            uris_obj.x_next(i,j) = uris_obj.DxClose(cnt-1,i,j);
+          } else {
+            uris_obj.x_next(i,j) = uris_obj.DxClose(cnt,i,j);
+          }
+          if (cnt == 1) {
+            uris_obj.x_prev(i,j) = uris_obj.DxClose(cnt-1,i,j);
+          } else {
+            uris_obj.x_prev(i,j) = uris_obj.DxClose(cnt-2,i,j);
+          }
         }
       }
     }
+
+    // uris(iUris)%v = (uris(iUris)%x - uris(iUris)%x_prev)/dt
+    // uris(iUris)%x_prev = uris(iUris)%x
+    for (int i = 0; i < nsd; i++) {
+      for (int j = 0; j < uris_obj.tnNo; j++) {
+        uris_obj.v(i,j) = (uris_obj.x_next(i,j) - uris_obj.x_prev(i,j)) / (2*com_mod.dt);
+        // uris_obj.v(i,j) = (-eq.af * (1 - eq.af) *  uris_obj.x_prev(i,j)
+        //                     + eq.af * (1 - eq.af) * uris_obj.x_next(i,j)
+        //                   + (1 - 2 * eq.af) * uris_obj.x(i,j)) / com_mod.dt;
+        // uris_obj.v(i,j) = (uris_obj.x(i,j) - uris_obj.x_prev(i,j)) / com_mod.dt;
+        // uris_obj.x_prev(i,j) = uris_obj.x(i,j);
+      }
+    }
     
-    // if (uris_obj.sdf.allocated() && cnt < uris_obj.cnt) {continue;}
-    if (uris_obj.sdf.size() > 0 && cnt < uris_obj.cnt) {continue;}
+    if (uris_obj.sdf.size() > 0 && cnt < uris_obj.cnt) {
+      uris_obj.sdf_t = 0.0;
+      continue;
+    }
 
     int max_eNoN = 0;
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
@@ -972,12 +1028,18 @@ void uris_calc_sdf(ComMod& com_mod) {
     if (uris_obj.sdf.size() <= 0) {
       uris_obj.sdf.resize(com_mod.tnNo);
       uris_obj.sdf = 0.0;
+      uris_obj.sdf_t.resize(nsd, com_mod.tnNo);
+      uris_obj.sdf_t = 0.0;
+      uris_obj.dirac_delta_func.resize(com_mod.tnNo);
+      uris_obj.dirac_delta_func = 0.0;
     }
 
     if (cm.idcm() == 0) {
       std::cout << "Recomputing SDF for " << uris_obj.name << std::endl;
     }
     uris_obj.sdf = uris_obj.sdf_default;
+    uris_obj.sdf_t = 0.0;
+    uris_obj.dirac_delta_func = 0.0;
 
     // Each time when the URIS moves (open/close), we need to 
     // recompute the signed distance function.
@@ -1010,10 +1072,14 @@ void uris_calc_sdf(ComMod& com_mod) {
     // leaflets will also be streched. Note that
     // this is a simplifying assumption. 
     Vector<double> xp(nsd);
+    
     for (int ca = 0; ca < com_mod.tnNo; ca++) {
+    // int mesh_ind = 0;
+    // for (int ca = 0; ca < com_mod.msh[mesh_ind].nNo; ca++) {
       double minS = std::numeric_limits<double>::max();
       for (int i = 0; i < nsd; i++) {
         xp(i) = com_mod.x(i,ca);
+        // xp(i) = com_mod.x(i,com_mod.msh[mesh_ind].gN(ca));
       }
       // Is the node inside the BBox?
       bool inside = true;
@@ -1051,16 +1117,15 @@ void uris_calc_sdf(ComMod& com_mod) {
             dS = std::sqrt(dS);
 
             if (dS < minS) {
-              minS = dS;
-              Ec = e;
-              jM = iM;
+              minS = dS; // closest distance
+              Ec = e; // closest URIS element index
+              jM = iM; // closest URIS mesh index
             }
           }
         }
 
         // We also need to compute the sign (above or below the valve).
         // Compute the element normal
-      
         auto& mesh = uris_obj.msh[jM];
         xXi = 0.0;
         lX = 0.0;
@@ -1094,28 +1159,73 @@ void uris_calc_sdf(ComMod& com_mod) {
         // } else {
         //   dotP = 1.0;
         // }
+        // uris_obj.sdf[ca] = dotP * minS;
 
         // [HZ] Improved implementation for SDF sign
+        double sdf_sign = 1.0;
         if (uris_obj.clsFlg) {
           auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
           if (dot_nrm < 0.0 && dotP < 0.0) {
-            dotP = -1.0;
+            sdf_sign = -1.0;
           } else {
-            dotP = 1.0;
+            sdf_sign = 1.0;
           }
         } else {
-          if (dotP < 0.0) {
-            dotP = -1.0;
+          auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
+          // if (dotP < 0.0) {
+          if (dot_nrm < 0.0 && dotP < 0.0) {
+            sdf_sign = -1.0;
           } else {
-            dotP = 1.0;
+            sdf_sign = 1.0;
           }
         }
 
-        uris_obj.sdf[ca] = dotP * minS;
+        // uris_obj.sdf[com_mod.msh[mesh_ind].gN(ca)] = sdf_sign * minS;
+        uris_obj.sdf[ca] = sdf_sign * minS;
+
+        Vector<double> xp_plane(nsd), E1(nsd), E2(nsd), v(nsd), u_interp(nsd);
+
+        // We need to interpolate valve velocity 
+        // project xp onto the triangle plane
+        for (int i = 0; i < nsd; i++) {
+          xp_plane(i) = xp(i) - dotP * nV(i);
+        }
+        // compute barycentric (\xi, \eta) via the planar solve
+        for (int i = 0; i < nsd; i++) {
+          E1(i) = lX(i,1) - lX(i,0);
+          E2(i) = lX(i,2) - lX(i,0);
+          v(i) = xp_plane(i) - lX(i,0);
+        }
+        auto g11 = utils::norm(E1, E1);
+        auto g12 = utils::norm(E1, E2);
+        auto g22 = utils::norm(E2, E2);
+        auto b1 = utils::norm(v, E1);
+        auto b2 = utils::norm(v, E2);
+        double det = g11 * g22 - g12 * g12;
+
+        double xi = (g22 * b1 - g12 * b2) / det;
+        double eta = (g11 * b2 - g12 * b1) / det;
+
+        // shape functions:
+        double N1 = 1.0 - xi - eta;
+        double N2 = xi;
+        double N3 = eta;
+
+        // interpolate the valve velocity:
+        for (int i = 0; i < nsd; i++) {
+          u_interp(i) = N1 * uris_obj.v(i, mesh.IEN(0,Ec)) +
+                        N2 * uris_obj.v(i, mesh.IEN(1,Ec)) +
+                        N3 * uris_obj.v(i, mesh.IEN(2,Ec));
+        }
+        
+        // Store interpolated velocity
+        for (int i = 0; i < nsd; i++) {
+          uris_obj.sdf_t(i,ca) = u_interp(i);
+        }
+
       }
     }
   }
-
 
   // Compute the SDF for the scaffold mesh
   for (int iUris = 0; iUris < nUris; iUris++) {
@@ -1161,6 +1271,8 @@ void uris_calc_sdf(ComMod& com_mod) {
     // this is a simplifying assumption. 
     Vector<double> xp_scaf(nsd);
     for (int ca = 0; ca < com_mod.tnNo; ca++) {
+    // int mesh_ind = 0;
+    // for (int ca = 0; ca < com_mod.msh[mesh_ind].nNo; ca++) {
       // std::cout << "URIS scaffold SDF index: " << ca << std::endl;
       double minS_scaf = std::numeric_limits<double>::max();
       for (int i = 0; i < nsd; i++) {
@@ -1202,6 +1314,7 @@ void uris_calc_sdf(ComMod& com_mod) {
           }
         }
         uris_obj.sdf_scaffold[ca] = minS_scaf;
+        // uris_obj.sdf_scaffold[com_mod.msh[mesh_ind].gN(ca)] = minS_scaf;
       }
     }
   }

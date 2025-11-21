@@ -345,8 +345,7 @@ void distribute(Simulation* simulation)
     cm.bcast(cm_mod, &com_mod.urisActFlag);
     cm.bcast(cm_mod, &com_mod.urisRes);
     cm.bcast(cm_mod, &com_mod.urisResClose);
-=======
->>>>>>> edd5c69 (Adding option for using customized resistance value whenthe RIS valve is closed.)
+
     cm.bcast(cm_mod, &com_mod.usePrecomp);
     if (com_mod.rmsh.isReqd) {
       auto& rmsh = com_mod.rmsh;
@@ -1171,6 +1170,7 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, &uris[iUris].sdf_default);
     cm.bcast(cm_mod, &uris[iUris].sdf_deps);
     cm.bcast(cm_mod, &uris[iUris].sdf_deps_close);
+    cm.bcast(cm_mod, &uris[iUris].sdf_deps_scaffold);
     cm.bcast(cm_mod, &uris[iUris].clsFlg);
     cm.bcast(cm_mod, &uris[iUris].cnt);
     cm.bcast(cm_mod, &uris[iUris].scF);
@@ -1356,6 +1356,9 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
       uris[iUris].DxOpen.resize(OpenN(iUris), com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].DxClose.resize(CloseN(iUris), com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].x.resize(com_mod.nsd, uris[iUris].tnNo);
+      uris[iUris].x_prev.resize(com_mod.nsd, uris[iUris].tnNo);
+      uris[iUris].x_next.resize(com_mod.nsd, uris[iUris].tnNo);
+      uris[iUris].v.resize(com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].Yd.resize(com_mod.nsd, uris[iUris].tnNo);
       DxOpenFlat[iUris].resize(DxOpenFlatSize(iUris));
       DxCloseFlat[iUris].resize(DxCloseFlatSize(iUris));
@@ -1364,6 +1367,9 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
 
   for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
     cm.bcast(cm_mod, uris[iUris].x);
+    cm.bcast(cm_mod, uris[iUris].x_prev);
+    cm.bcast(cm_mod, uris[iUris].x_next);
+    cm.bcast(cm_mod, uris[iUris].v);
     cm.bcast(cm_mod, uris[iUris].Yd);
     cm.bcast(cm_mod, DxOpenFlat[iUris]);
     cm.bcast(cm_mod, DxCloseFlat[iUris]);
