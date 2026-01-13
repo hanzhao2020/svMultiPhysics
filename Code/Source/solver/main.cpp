@@ -1,32 +1,5 @@
-/* Copyright (c) Stanford University, The Regents of the University of California, and others.
- *
- * All Rights Reserved.
- *
- * See Copyright-SimVascular.txt for additional details.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject
- * to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
- * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
- * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
- * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// SPDX-FileCopyrightText: Copyright (c) Stanford University, The Regents of the University of California, and others.
+// SPDX-License-Identifier: BSD-3-Clause
 
 // The functions defined here are used to run a simulation from the command line.
 //
@@ -76,6 +49,11 @@ void add_eq_linear_algebra(ComMod& com_mod, eqType& lEq)
   if (lEq.linear_algebra_assembly_type != consts::LinearAlgebraType::none) {
     lEq.linear_algebra->set_assembly(lEq.linear_algebra_assembly_type);
   }
+}
+
+void finalize_linear_algebra(eqType& lEq)
+{
+  lEq.linear_algebra->finalize();
 }
 
 /// @brief Read in a solver XML file and all mesh and BC data.  
@@ -898,9 +876,17 @@ void run_simulation(Simulation* simulation)
 //
 int main(int argc, char *argv[])
 {
-  if (argc != 2) {
+  if (argc < 2) {
     std::cout << "[svMultiPhysics] ERROR: The svMultiPhysics program requires the solver input XML file name as an argument." << std::endl;
     exit(1);
+  }
+
+  // Process extra arguments for XML parameter substitution.
+  for (int i = 2; i < argc; i++) {
+    std::string str(argv[i]);
+    int pos = str.find("=");
+    auto name = str.substr(0,pos);
+    auto value = str.substr(pos+1,str.size());
   }
 
   std::cout << std::scientific << std::setprecision(16);
@@ -1014,8 +1000,12 @@ int main(int argc, char *argv[])
     } else {
       break;
     }
-
   }
+
+   for (int iEq = 0; iEq < simulation->com_mod.nEq; iEq++) {
+      auto& eq = simulation->com_mod.eq[iEq];
+      finalize_linear_algebra(eq);
+    }
 
   MPI_Finalize();
 }

@@ -1,32 +1,5 @@
-/* Copyright (c) Stanford University, The Regents of the University of California, and others.
- *
- * All Rights Reserved.
- *
- * See Copyright-SimVascular.txt for additional details.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject
- * to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
- * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
- * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
- * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// SPDX-FileCopyrightText: Copyright (c) Stanford University, The Regents of the University of California, and others.
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include "post.h"
 
@@ -440,7 +413,7 @@ void div_post(Simulation* simulation, const mshType& lM, Array<double>& res, con
             vx(1,1) = vx(1,1) + Nx(1,a)*yl(1,a);
             vx(2,2) = vx(2,2) + Nx(2,a)*yl(2,a);
           }
-          double divV = vx(0,0) + vx(1,1) + vx(2,2);
+          divV = vx(0,0) + vx(1,1) + vx(2,2);
 
         } else { 
           for (int a = 0; a < eNoN; a++) {
@@ -2005,7 +1978,7 @@ void tpost(Simulation* simulation, const mshType& lM, const int m, Array<double>
             for (int l = 0; l < nsd; l++) {
               sigma(l,l) = sigma(l,l) - trS;
             }
-            double vmises = sqrt(mat_ddot(sigma, sigma, nsd));
+            double vmises = sqrt(1.5 * mat_ddot(sigma, sigma, nsd));
             resl(0) = vmises;
             sE(e) = sE(e) + w*vmises;
           }
