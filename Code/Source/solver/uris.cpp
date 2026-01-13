@@ -15,6 +15,7 @@
 #include "read_msh.h"
 #include "VtkData.h"
 
+
 namespace uris { 
 
 /// @brief This subroutine computes the mean pressure and flux on the 
@@ -330,7 +331,6 @@ void uris_update_disp(ComMod& com_mod, CmMod& cm_mod) {
         uris_obj.Yd(i,nd) /= divisor;
       }
     }
-
   }
 
 }
@@ -474,13 +474,6 @@ void uris_read_msh(Simulation* simulation) {
   com_mod.urisFlag = true;
   com_mod.urisActFlag = true;
 
-  auto param = simulation->parameters.URIS_mesh_parameters[0];
-  com_mod.urisRes = param->resistance();
-  com_mod.urisResClose = param->resistance_close();
-
-  std::cout << "URIS resistance: " << com_mod.urisRes << std::endl;
-  std::cout << "URIS resistance (closed): " << com_mod.urisResClose << std::endl;
-
   int nUris = simulation->parameters.URIS_mesh_parameters.size();
   com_mod.nUris = nUris;
 
@@ -497,6 +490,7 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.nFa = param->URIS_face_parameters.size();
     uris_obj.msh.resize(uris_obj.nFa);
     uris_obj.nrm.resize(nsd);
+
     Array<double> gX(0,0);
 
     std::string positive_flow_normal_file_path = param->positive_flow_normal_file_path();
@@ -548,7 +542,10 @@ void uris_read_msh(Simulation* simulation) {
 
     uris_obj.sdf_deps = param->thickness();
     uris_obj.sdf_deps_close = param->close_thickness();
+    uris_obj.resistance = param->resistance();
+    uris_obj.resistance_close = param->resistance_close();
     uris_obj.clsFlg = param->valve_starts_as_closed();
+    uris_obj.use_valve_velocity = param->use_valve_velocity();
 
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
       auto mesh_param = param->URIS_face_parameters[iM];
@@ -752,10 +749,6 @@ void uris_read_msh(Simulation* simulation) {
         }
       }
       mesh.gIEN.clear();
-
-      std::cout << "Number of uris elements nel: " << mesh.nEl << std::endl;
-      std::cout << "URIS mesh IEN size: " << mesh.IEN.nrows() << ", " << mesh.IEN.ncols() << std::endl;
-
     }
 
     if (uris_obj.nFa > 0) {
@@ -945,74 +938,54 @@ void uris_calc_sdf(ComMod& com_mod) {
 
   int cEq = com_mod.cEq;
   auto& eq = com_mod.eq[cEq];
-
   auto& cm = com_mod.cm;
   auto& uris = com_mod.uris;
   const int nsd = com_mod.nsd;
   const int nUris = com_mod.nUris;
 
   Array<double> xXi(nsd, nsd-1);
+  Vector<double> minb(nsd), maxb(nsd), extra(nsd), xp(nsd);
+  Vector<double> minb_scaf(nsd), maxb_scaf(nsd), extra_scaf(nsd), xp_scaf(nsd);
+  Vector<double> xp_plane(nsd), E1(nsd), E2(nsd), v(nsd), u_interp(nsd);
+  double extra_val = 0.1, extra_scaf_val = 0.1; // BBox size adjustment
 
   for (int iUris = 0; iUris < nUris; iUris++) {
     // We need to check if the valve needs to move 
     auto& uris_obj = uris[iUris];
 
-    // Compute the SDF for the uris valves
-    int cnt = 0;
-    if (!uris_obj.clsFlg) {
-      cnt = std::min(uris_obj.cnt, uris_obj.DxOpen.nrows());
-      for (int i = 0; i < uris_obj.x.nrows(); i++) {
-        for (int j = 0; j < uris_obj.x.ncols(); j++) {
-          uris_obj.x(i,j) = uris_obj.DxOpen(cnt-1,i,j);
-          // Obtain x_n-1 and x_n+1 from the displacement history
-          if (cnt == uris_obj.DxOpen.nrows()) {
-            uris_obj.x_next(i,j) = uris_obj.DxOpen(cnt-1,i,j);
-          } else {
-            uris_obj.x_next(i,j) = uris_obj.DxOpen(cnt,i,j);
-          }
-          if (cnt == 1) {
-            uris_obj.x_prev(i,j) = uris_obj.DxOpen(cnt-1,i,j);
-          } else {
-            uris_obj.x_prev(i,j) = uris_obj.DxOpen(cnt-2,i,j);
-          }
-        }
-      }
-    } else {
-      cnt = std::min(uris_obj.cnt, uris_obj.DxClose.nrows());
-      for (int i = 0; i < uris_obj.x.nrows(); i++) {
-        for (int j = 0; j < uris_obj.x.ncols(); j++) {
-          uris_obj.x(i,j) = uris_obj.DxClose(cnt-1,i,j);
-          // Obtain x_n-1 and x_n+1 from the displacement history
-          if (cnt == uris_obj.DxClose.nrows()) {
-            uris_obj.x_next(i,j) = uris_obj.DxClose(cnt-1,i,j);
-          } else {
-            uris_obj.x_next(i,j) = uris_obj.DxClose(cnt,i,j);
-          }
-          if (cnt == 1) {
-            uris_obj.x_prev(i,j) = uris_obj.DxClose(cnt-1,i,j);
-          } else {
-            uris_obj.x_prev(i,j) = uris_obj.DxClose(cnt-2,i,j);
-          }
-        }
+    int cnt = uris_obj.clsFlg ? std::min(uris_obj.cnt, uris_obj.DxClose.nrows()) : 
+                                std::min(uris_obj.cnt, uris_obj.DxOpen.nrows());
+    Array3<double>& Dx = uris_obj.clsFlg ? uris_obj.DxClose : uris_obj.DxOpen;
+
+    for (int i = 0; i < uris_obj.x.nrows(); i++) {
+      for (int j = 0; j < uris_obj.x.ncols(); j++) {
+        uris_obj.x(i,j) = Dx(cnt-1,i,j);
       }
     }
 
-    // uris(iUris)%v = (uris(iUris)%x - uris(iUris)%x_prev)/dt
-    // uris(iUris)%x_prev = uris(iUris)%x
     for (int i = 0; i < nsd; i++) {
       for (int j = 0; j < uris_obj.tnNo; j++) {
-        uris_obj.v(i,j) = (uris_obj.x_next(i,j) - uris_obj.x_prev(i,j)) / (2*com_mod.dt);
-        // uris_obj.v(i,j) = (-eq.af * (1 - eq.af) *  uris_obj.x_prev(i,j)
-        //                     + eq.af * (1 - eq.af) * uris_obj.x_next(i,j)
-        //                   + (1 - 2 * eq.af) * uris_obj.x(i,j)) / com_mod.dt;
-        // uris_obj.v(i,j) = (uris_obj.x(i,j) - uris_obj.x_prev(i,j)) / com_mod.dt;
-        // uris_obj.x_prev(i,j) = uris_obj.x(i,j);
+        if (uris_obj.use_valve_velocity) {
+          // uris_obj.v(i,j) = (uris_obj.x_next(i,j) - uris_obj.x_prev(i,j)) / (2*com_mod.dt);
+          
+          // uris_obj.v(i,j) = (-eq.af * (1 - eq.af) *  uris_obj.x_prev(i,j)
+          //                     + eq.af * (1 - eq.af) * uris_obj.x_next(i,j)
+          //                   + (1 - 2 * eq.af) * uris_obj.x(i,j)) / com_mod.dt;
+          uris_obj.v(i,j) = (uris_obj.x(i,j) - uris_obj.x_prev(i,j)) / com_mod.dt;
+        } else {
+          uris_obj.v(i,j) = 0.0;
+        }
+        uris_obj.x_prev(i,j) = uris_obj.x(i,j);
       }
     }
     
-    if (uris_obj.sdf.size() > 0 && cnt < uris_obj.cnt) {
+    if (com_mod.cTS > 1 && cnt < uris_obj.cnt) {
+      // std::cout << "cts:" << com_mod.cTS << std::endl;
       uris_obj.sdf_t = 0.0;
       continue;
+    } else {
+      uris_obj.sdf = uris_obj.sdf_default;
+      uris_obj.sdf_t = 0.0;
     }
 
     int max_eNoN = 0;
@@ -1022,24 +995,12 @@ void uris_calc_sdf(ComMod& com_mod) {
         max_eNoN = mesh.eNoN;
       }
     }
-    Array<double> lX(nsd, max_eNoN);
 
-    // if (!uris_obj.sdf.allocated()) {
-    if (uris_obj.sdf.size() <= 0) {
-      uris_obj.sdf.resize(com_mod.tnNo);
-      uris_obj.sdf = 0.0;
-      uris_obj.sdf_t.resize(nsd, com_mod.tnNo);
-      uris_obj.sdf_t = 0.0;
-      uris_obj.dirac_delta_func.resize(com_mod.tnNo);
-      uris_obj.dirac_delta_func = 0.0;
-    }
+    Array<double> lX(nsd, max_eNoN);
 
     if (cm.idcm() == 0) {
       std::cout << "Recomputing SDF for " << uris_obj.name << std::endl;
     }
-    uris_obj.sdf = uris_obj.sdf_default;
-    uris_obj.sdf_t = 0.0;
-    uris_obj.dirac_delta_func = 0.0;
 
     // Each time when the URIS moves (open/close), we need to 
     // recompute the signed distance function.
@@ -1054,14 +1015,11 @@ void uris_calc_sdf(ComMod& com_mod) {
     }
 
     // For each coordinate dimension, find the minimum and maximum in uris_obj.x.
-    double extra_val = 0.1;  // [HZ] The BBox is 10% larger than the actual valve, default is 0.1
     for (int i = 0; i < nsd; i++) {
       for (int j = 0; j < uris_obj.x.ncols(); j++) {
         double val = uris_obj.x(i,j);
-        if (val < minb(i))
-            minb(i) = val;
-        if (val > maxb(i))
-            maxb(i) = val;
+        minb(i) = std::min(minb(i), val);
+        maxb(i) = std::max(maxb(i), val);
       }
       extra(i) = (maxb(i) - minb(i)) * extra_val;
     }
@@ -1070,9 +1028,7 @@ void uris_calc_sdf(ComMod& com_mod) {
     // means that the valves will be morphed based on the fluid mesh
     // motion. If the fluid mesh stretches near the valve, the valve
     // leaflets will also be streched. Note that
-    // this is a simplifying assumption. 
-    Vector<double> xp(nsd);
-    
+    // this is a simplifying assumption.     
     for (int ca = 0; ca < com_mod.tnNo; ca++) {
     // int mesh_ind = 0;
     // for (int ca = 0; ca < com_mod.msh[mesh_ind].nNo; ca++) {
@@ -1096,9 +1052,7 @@ void uris_calc_sdf(ComMod& com_mod) {
         int jM = -1;
         Vector<double> xb(nsd);
         for (int iM = 0; iM < uris_obj.nFa; iM++) {
-
           auto& mesh = uris_obj.msh[iM];
-
           for (int e = 0; e < mesh.nEl; e++) {
             xb = 0.0;
             for (int a = 0; a < mesh.eNoN; a++) {
@@ -1143,9 +1097,9 @@ void uris_calc_sdf(ComMod& com_mod) {
 
         for (int a = 0; a < mesh.eNoN; a++) {
           for (int i = 0; i < nsd - 1; i++) {
-            double factor = mesh.Nx(i,a,0);
-            for (int j = 0; j < nsd; j++)
-                xXi(j,i) += lX(j,a) * factor;
+            for (int j = 0; j < nsd; j++) {
+              xXi(j,i) += lX(j,a) * mesh.Nx(i,a,0);
+            } 
           }
         }
 
@@ -1163,64 +1117,52 @@ void uris_calc_sdf(ComMod& com_mod) {
 
         // [HZ] Improved implementation for SDF sign
         double sdf_sign = 1.0;
-        if (uris_obj.clsFlg) {
-          auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
-          if (dot_nrm < 0.0 && dotP < 0.0) {
-            sdf_sign = -1.0;
-          } else {
-            sdf_sign = 1.0;
-          }
-        } else {
-          auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
-          // if (dotP < 0.0) {
-          if (dot_nrm < 0.0 && dotP < 0.0) {
-            sdf_sign = -1.0;
-          } else {
-            sdf_sign = 1.0;
-          }
-        }
+        auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
+        if (dot_nrm < 0.0 && dotP < 0.0) {
+          sdf_sign = -1.0;
+        } 
 
         // uris_obj.sdf[com_mod.msh[mesh_ind].gN(ca)] = sdf_sign * minS;
         uris_obj.sdf[ca] = sdf_sign * minS;
 
-        Vector<double> xp_plane(nsd), E1(nsd), E2(nsd), v(nsd), u_interp(nsd);
+        if (uris_obj.use_valve_velocity) {
+          // We need to interpolate valve velocity 
+          // project xp onto the triangle plane
+          for (int i = 0; i < nsd; i++) {
+            xp_plane(i) = xp(i) - dotP * nV(i);
+          }
+          // compute barycentric (\xi, \eta) via the planar solve
+          for (int i = 0; i < nsd; i++) {
+            E1(i) = lX(i,1) - lX(i,0);
+            E2(i) = lX(i,2) - lX(i,0);
+            v(i) = xp_plane(i) - lX(i,0);
+          }
+          auto g11 = utils::norm(E1, E1);
+          auto g12 = utils::norm(E1, E2); 
+          auto g22 = utils::norm(E2, E2);
+          auto b1 = utils::norm(v, E1);
+          auto b2 = utils::norm(v, E2);
+          double det = g11 * g22 - g12 * g12;
 
-        // We need to interpolate valve velocity 
-        // project xp onto the triangle plane
-        for (int i = 0; i < nsd; i++) {
-          xp_plane(i) = xp(i) - dotP * nV(i);
-        }
-        // compute barycentric (\xi, \eta) via the planar solve
-        for (int i = 0; i < nsd; i++) {
-          E1(i) = lX(i,1) - lX(i,0);
-          E2(i) = lX(i,2) - lX(i,0);
-          v(i) = xp_plane(i) - lX(i,0);
-        }
-        auto g11 = utils::norm(E1, E1);
-        auto g12 = utils::norm(E1, E2);
-        auto g22 = utils::norm(E2, E2);
-        auto b1 = utils::norm(v, E1);
-        auto b2 = utils::norm(v, E2);
-        double det = g11 * g22 - g12 * g12;
+          double xi = (g22 * b1 - g12 * b2) / det;
+          double eta = (g11 * b2 - g12 * b1) / det;
 
-        double xi = (g22 * b1 - g12 * b2) / det;
-        double eta = (g11 * b2 - g12 * b1) / det;
+          // shape functions:
+          double N1 = 1.0 - xi - eta;
+          double N2 = xi;
+          double N3 = eta;
 
-        // shape functions:
-        double N1 = 1.0 - xi - eta;
-        double N2 = xi;
-        double N3 = eta;
-
-        // interpolate the valve velocity:
-        for (int i = 0; i < nsd; i++) {
-          u_interp(i) = N1 * uris_obj.v(i, mesh.IEN(0,Ec)) +
-                        N2 * uris_obj.v(i, mesh.IEN(1,Ec)) +
-                        N3 * uris_obj.v(i, mesh.IEN(2,Ec));
-        }
-        
-        // Store interpolated velocity
-        for (int i = 0; i < nsd; i++) {
-          uris_obj.sdf_t(i,ca) = u_interp(i);
+          // interpolate the valve velocity:
+          for (int i = 0; i < nsd; i++) {
+            u_interp(i) = N1 * uris_obj.v(i, mesh.IEN(0,Ec)) +
+                          N2 * uris_obj.v(i, mesh.IEN(1,Ec)) +
+                          N3 * uris_obj.v(i, mesh.IEN(2,Ec));
+          }
+          
+          // Store interpolated velocity
+          for (int i = 0; i < nsd; i++) {
+            uris_obj.sdf_t(i,ca) = u_interp(i);
+          }
         }
 
       }
@@ -1231,35 +1173,24 @@ void uris_calc_sdf(ComMod& com_mod) {
   for (int iUris = 0; iUris < nUris; iUris++) {
     auto& uris_obj = uris[iUris];
     
-    if (!uris_obj.scaffold_flag || uris_obj.sdf_scaffold.size() > 0) {
+    if (!uris_obj.scaffold_flag || com_mod.cTS > 1) {
       continue;
     }
 
     auto& scaffold_mesh = uris_obj.scaffold_mesh;
-  
-    if (uris_obj.sdf_scaffold.size() <= 0) {
-      uris_obj.sdf_scaffold.resize(com_mod.tnNo);
-      uris_obj.sdf_scaffold = 0.0;
-    }
     uris_obj.sdf_scaffold = uris_obj.sdf_default;
 
-    Vector<double> minb_scaf(nsd);
-    Vector<double> maxb_scaf(nsd);
-    Vector<double> extra_scaf(nsd);
     for (int i = 0; i < nsd; i++) {
       minb_scaf(i) = std::numeric_limits<double>::max();
       maxb_scaf(i) = std::numeric_limits<double>::lowest();
     }
 
     // For each coordinate dimension, find the minimum and maximum in uris_obj.x.
-    double extra_scaf_val = 0.1;  // [HZ] The BBox is 10% larger than the actual valve, default is 0.1
     for (int i = 0; i < nsd; i++) {
       for (int j = 0; j < scaffold_mesh.x.ncols(); j++) {
         double val = scaffold_mesh.x(i,j);
-        if (val < minb_scaf(i))
-            minb_scaf(i) = val;
-        if (val > maxb_scaf(i))
-            maxb_scaf(i) = val;
+        minb_scaf(i) = std::min(minb_scaf(i), val);
+        maxb_scaf(i) = std::max(maxb_scaf(i), val);
       }
       extra_scaf(i) = (maxb_scaf(i) - minb_scaf(i)) * extra_scaf_val;
     }

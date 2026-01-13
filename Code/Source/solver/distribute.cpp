@@ -343,8 +343,6 @@ void distribute(Simulation* simulation)
     cm.bcast(cm_mod, &com_mod.ris0DFlag);
     cm.bcast(cm_mod, &com_mod.urisFlag);
     cm.bcast(cm_mod, &com_mod.urisActFlag);
-    cm.bcast(cm_mod, &com_mod.urisRes);
-    cm.bcast(cm_mod, &com_mod.urisResClose);
 
     cm.bcast(cm_mod, &com_mod.usePrecomp);
     if (com_mod.rmsh.isReqd) {
@@ -1171,12 +1169,15 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, &uris[iUris].sdf_deps);
     cm.bcast(cm_mod, &uris[iUris].sdf_deps_close);
     cm.bcast(cm_mod, &uris[iUris].sdf_deps_scaffold);
+    cm.bcast(cm_mod, &uris[iUris].resistance);
+    cm.bcast(cm_mod, &uris[iUris].resistance_close);
     cm.bcast(cm_mod, &uris[iUris].clsFlg);
     cm.bcast(cm_mod, &uris[iUris].cnt);
     cm.bcast(cm_mod, &uris[iUris].scF);
     cm.bcast(cm_mod, uris[iUris].nrm);
 
     cm.bcast(cm_mod, &uris[iUris].scaffold_flag);
+    cm.bcast(cm_mod, &uris[iUris].use_valve_velocity);
     if (uris[iUris].scaffold_flag) {
       cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.lShl);
       cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.nEl);

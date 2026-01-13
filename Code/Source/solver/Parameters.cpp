@@ -2715,6 +2715,7 @@ URISMeshParameters::URISMeshParameters()
   set_parameter("Closed_thickness", 0.25,  !required, close_thickness);
   set_parameter("Resistance", 1.0e5,  !required, resistance);
   set_parameter("Closed_resistance", 1.0e5,  !required, resistance_close);
+  set_parameter("Use_valve_velocity", false,  !required, use_valve_velocity);
   set_parameter("Valve_starts_as_closed", true,  !required, valve_starts_as_closed);
   set_parameter("Positive_flow_normal_file_path", "",  !required, positive_flow_normal_file_path);
   set_parameter("Scaffold_file_path", "",  !required, scaffold_file_path);

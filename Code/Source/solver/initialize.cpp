@@ -847,6 +847,17 @@ void initialize(Simulation* simulation, Vector<double>& timeP)
 
   std::fill(com_mod.rmsh.flag.begin(), com_mod.rmsh.flag.end(), false);
   com_mod.resetSim = false;
+
+  if (com_mod.urisFlag) {
+    for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
+      auto& uris_obj = com_mod.uris[iUris];
+      uris_obj.sdf.resize(com_mod.tnNo);
+      uris_obj.sdf_t.resize(nsd, com_mod.tnNo);
+      if (uris_obj.scaffold_flag) {
+        uris_obj.sdf_scaffold.resize(com_mod.tnNo);
+      }
+    }
+  }
 }
 
 //-----------

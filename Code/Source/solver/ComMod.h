@@ -1467,14 +1467,23 @@ class urisType
     // Default signed distance value away from the valve.
     double sdf_default = 1000.0;
 
-    // Default distance value of the valve boundary (valve thickness).
-    double sdf_deps = 0.25;
+    // Default distance value of the valve boundary (half valve thickness).
+    double sdf_deps = 0.2;
 
     // Default half valve thickness when valve is closed.
     double sdf_deps_close = 0.2;
 
     // Default half scaffold thickness.
     double sdf_deps_scaffold = 0.1;
+
+    /// @brief URIS resistance
+    double resistance;
+
+    /// @brief URIS resistance when the valve is closed
+    double resistance_close;
+
+    // Whether to use the valve velocity.
+    bool use_valve_velocity = false;
 
     // Displacements of the valve when it opens (3D array).
     Array3<double> DxOpen;
@@ -1614,12 +1623,6 @@ class ComMod {
 
     /// @brief Number of URIS surfaces (uninitialized, to be set later)
     int nUris;
-
-    /// @brief URIS resistance
-    double urisRes;
-
-    /// @brief URIS resistance when the valve is closed
-    double urisResClose;
 
     /// @brief Whether to use precomputed state-variable solutions
     bool usePrecomp = false;

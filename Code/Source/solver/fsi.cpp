@@ -23,7 +23,7 @@ namespace fsi {
 void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Array<double>& Ag, 
     const Array<double>& Yg, const Array<double>& Dg)
 {
-  #define n_debug_construct_fsi 
+  #define n_debug_construct_fsi
   #ifdef debug_construct_fsi
   DebugMsg dmsg(__func__, com_mod.cm.idcm());
   dmsg.banner();
@@ -62,6 +62,15 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
   dmsg << "pS0.size(): " << pS0.size();
   #endif
 
+  // if (com_mod.cm.idcm() == 0) {
+  //   std::cout << "tnNo: " << com_mod.tnNo << std::endl;
+  //   std::cout << "tDof: " << com_mod.tDof << std::endl;
+  //   std::cout << "dof: " << com_mod.dof << std::endl;
+  //   std::cout << "mesh name: " << lM.name << std::endl;
+  //   std::cout << "mesh gnno: " << lM.gnNo << std::endl;
+  //   std::cout << "mesh nEl: " << lM.nEl << std::endl;
+  // }
+
   Vector<int> ptr(eNoN); 
   Array3<double> lK(dof*dof,eNoN,eNoN), lKd(dof*nsd,eNoN,eNoN);
   Array<double> xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN), dl(tDof,eNoN), bfl(nsd,eNoN), 
@@ -78,7 +87,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
   //
   double struct_3d_time = 0.0;
   double fluid_3d_time = 0.0;
-  double DDir = 0.0;
+  
   Array<double> vValve;
   if (com_mod.urisFlag) {
     vValve.resize(com_mod.nUris, nsd);
@@ -86,6 +95,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
     vValve.resize(0, 0);
   }
   vValve = 0.0;
+  double ris_factor = 0.0;
 
   for (int e = 0; e < lM.nEl; e++) {
     // setting globals
@@ -199,12 +209,15 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
         Vector<double> distSrf_scaffold(com_mod.nUris);
         distSrf = 0.0;
         distSrf_scaffold = 0.0;
+        vValve = 0.0;
         for (int a = 0; a < eNoN; a++) {
           int Ac = lM.IEN(a,e);
           for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
             distSrf(iUris) += fs_1[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
-            for (int i = 0; i < nsd; i++) {
-              vValve(iUris,i) += fs_1[0].N(a,g) * com_mod.uris[iUris].sdf_t(i, Ac);
+            if (com_mod.uris[iUris].use_valve_velocity) {
+              for (int i = 0; i < nsd; i++) {
+                vValve(iUris,i) += fs_1[0].N(a,g) * com_mod.uris[iUris].sdf_t(i, Ac);
+              }
             }
             if (com_mod.uris[iUris].scaffold_flag) {
               distSrf_scaffold(iUris) += fs_1[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf_scaffold(Ac));
@@ -212,13 +225,25 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
           }
         }
 
-        DDir = 0.0;
+        double DDir = 0.0;
+        double ris_resistance = 0.0;
         double sdf_deps_temp = 0;
         double DDirTmp = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
+          if (com_mod.uris[iUris].scaffold_flag) {
+            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_scaffold;
+            ris_resistance = com_mod.uris[iUris].resistance_close;
+            if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
+              DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
+                        (2*sdf_deps_temp*sdf_deps_temp);
+              // if (DDirTmp > DDir) {DDir = DDirTmp;}
+            }
+          }
+
           if (com_mod.uris[iUris].clsFlg) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
-            // // Gradual transition using quadratic interpolation
+            ris_resistance = com_mod.uris[iUris].resistance_close;
+            // Gradual transition using quadratic interpolation
             // if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxClose.nrows()) {
             //   // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxClose.nrows() steps
             //   double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
@@ -232,6 +257,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             // }
           } else {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+            ris_resistance = com_mod.uris[iUris].resistance;
             // // Gradual transition using quadratic interpolation
             // if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxOpen.nrows()) {
             //   // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxOpen.nrows() steps
@@ -248,22 +274,15 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
           if (distSrf(iUris) <= sdf_deps_temp) {
             DDirTmp = (1 + cos(pi*distSrf(iUris)/sdf_deps_temp))/
                       (2*sdf_deps_temp*sdf_deps_temp);
-            if (DDirTmp > DDir) {DDir = DDirTmp;}
+            // if (DDirTmp > DDir) {DDir = DDirTmp;}
           }
-
-          if (com_mod.uris[iUris].scaffold_flag) {
-            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_scaffold;
-          
-            if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
-              DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
-                        (2*sdf_deps_temp*sdf_deps_temp);
-              if (DDirTmp > DDir) {DDir = DDirTmp;}
-            }
-          }
-          
+          DDir = DDirTmp;
         }
-
-        if (!com_mod.urisActFlag) {DDir = 0.0;}
+        if (com_mod.urisActFlag) {
+          ris_factor = ris_resistance * DDir;
+        } else {
+          ris_factor = 0.0;
+        }
       }
 
       if (nsd == 3) {
@@ -274,7 +293,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             // fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
-            fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir, vValve);
+            fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, ris_factor, vValve);
 
           } break;
 
@@ -352,7 +371,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             //fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
-            fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir, vValve);
+            fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, ris_factor, vValve);
           } break;
 
           case Equation_ustruct:
