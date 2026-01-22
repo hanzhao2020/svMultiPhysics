@@ -130,7 +130,8 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   //  If the uris has passed the closing state
-  if (uris_obj.cnt > uris_obj.DxClose.nrows()) {
+  int close_cnt = 1; // The uris is considered to be closed if within this number of states
+  if (uris_obj.cnt > close_cnt*uris_obj.DxClose.nrows()) {
     if (uris_obj.meanPD > uris_obj.meanPU) {
       uris_obj.cnt = 1;
       uris_obj.clsFlg = false;
@@ -226,7 +227,8 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   // If the uris has passed the open state
-  if (uris_obj.cnt > uris_obj.DxOpen.nrows()) {
+  int open_cnt = 1; // The uris is considered to be open if within this number of states
+  if (uris_obj.cnt > open_cnt*uris_obj.DxOpen.nrows()) {
     if (meanV < 0.0) {
       uris_obj.cnt = 1;
       uris_obj.clsFlg = true;
@@ -1117,10 +1119,20 @@ void uris_calc_sdf(ComMod& com_mod) {
 
         // [HZ] Improved implementation for SDF sign
         double sdf_sign = 1.0;
-        auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
-        if (dot_nrm < 0.0 && dotP < 0.0) {
-          sdf_sign = -1.0;
-        } 
+        if (uris_obj.clsFlg) {
+          auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
+          if (dot_nrm < 0.0 && dotP < 0.0) {
+            sdf_sign = -1.0;
+          } else {
+            sdf_sign = 1.0;
+          }
+        } else {
+          if (dotP < 0.0) {
+            sdf_sign = -1.0;
+          } else {
+            sdf_sign = 1.0;
+          }
+        }
 
         // uris_obj.sdf[com_mod.msh[mesh_ind].gN(ca)] = sdf_sign * minS;
         uris_obj.sdf[ca] = sdf_sign * minS;
