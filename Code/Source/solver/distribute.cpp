@@ -1171,12 +1171,14 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, &uris[iUris].sdf_deps_scaffold);
     cm.bcast(cm_mod, &uris[iUris].resistance);
     cm.bcast(cm_mod, &uris[iUris].resistance_close);
+    cm.bcast(cm_mod, &uris[iUris].pressurization_time);
     cm.bcast(cm_mod, &uris[iUris].clsFlg);
     cm.bcast(cm_mod, &uris[iUris].cnt);
     cm.bcast(cm_mod, &uris[iUris].scF);
     cm.bcast(cm_mod, uris[iUris].nrm);
 
     cm.bcast(cm_mod, &uris[iUris].scaffold_flag);
+    cm.bcast(cm_mod, &uris[iUris].reverse_normal);
     cm.bcast(cm_mod, &uris[iUris].use_valve_velocity);
     if (uris[iUris].scaffold_flag) {
       cm.bcast(cm_mod, &uris[iUris].scaffold_mesh.lShl);

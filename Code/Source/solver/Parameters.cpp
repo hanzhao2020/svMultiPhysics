@@ -2720,6 +2720,8 @@ URISMeshParameters::URISMeshParameters()
   set_parameter("Valve_starts_as_closed", true,  !required, valve_starts_as_closed);
   set_parameter("Positive_flow_normal_file_path", "",  !required, positive_flow_normal_file_path);
   set_parameter("Scaffold_file_path", "",  !required, scaffold_file_path);
+  set_parameter("Pressurization_time", 0.0,  !required, pressurization_time);
+  set_parameter("Reverse_surface_normal", false,  !required, reverse_surface_normal);
 }
 
 void URISMeshParameters::print_parameters()

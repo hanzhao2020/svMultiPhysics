@@ -1616,7 +1616,8 @@ class URISMeshParameters : public ParameterLists
     Parameter<bool> valve_starts_as_closed; // Whether the valve starts as closed
     Parameter<std::string> positive_flow_normal_file_path; // File path for the positive flow normal
     Parameter<std::string> scaffold_file_path; // File path for the scaffold
-
+    Parameter<double> pressurization_time; // Time for pressurization
+    Parameter<bool> reverse_surface_normal; // Whether to reverse the surface normal vector
 };
 
 

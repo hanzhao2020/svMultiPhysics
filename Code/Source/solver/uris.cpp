@@ -130,8 +130,10 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   //  If the uris has passed the closing state
-  int close_cnt = 1; // The uris is considered to be closed if within this number of states
-  if (uris_obj.cnt > close_cnt*uris_obj.DxClose.nrows()) {
+  int stab_cycle = 1; // The uris is considered to be closed if within this number of stages
+  // std::cout << "rank: " << cm.idcm() << " pressurization time: " << uris_obj.pressurization_time << std::endl;
+  if (uris_obj.cnt > stab_cycle*uris_obj.DxClose.nrows() 
+      && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
     if (uris_obj.meanPD > uris_obj.meanPU) {
       uris_obj.cnt = 1;
       uris_obj.clsFlg = false;
@@ -227,8 +229,9 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   // If the uris has passed the open state
-  int open_cnt = 1; // The uris is considered to be open if within this number of states
-  if (uris_obj.cnt > open_cnt*uris_obj.DxOpen.nrows()) {
+  int stab_cycle = 1; // The uris is considered to be open if within this number of stages
+  if (uris_obj.cnt > stab_cycle*uris_obj.DxOpen.nrows()
+      && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
     if (meanV < 0.0) {
       uris_obj.cnt = 1;
       uris_obj.clsFlg = true;
@@ -492,7 +495,6 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.nFa = param->URIS_face_parameters.size();
     uris_obj.msh.resize(uris_obj.nFa);
     uris_obj.nrm.resize(nsd);
-
     Array<double> gX(0,0);
 
     std::string positive_flow_normal_file_path = param->positive_flow_normal_file_path();
@@ -548,6 +550,8 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.resistance_close = param->resistance_close();
     uris_obj.clsFlg = param->valve_starts_as_closed();
     uris_obj.use_valve_velocity = param->use_valve_velocity();
+    uris_obj.reverse_normal = param->reverse_surface_normal();
+    uris_obj.pressurization_time = param->pressurization_time();
 
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
       auto mesh_param = param->URIS_face_parameters[iM];
@@ -1107,7 +1111,11 @@ void uris_calc_sdf(ComMod& com_mod) {
 
         auto nV = utils::cross(xXi);
         auto Jac = sqrt(utils::norm(nV));
-        nV = nV / Jac;
+        if (uris_obj.reverse_normal) {
+          nV = -nV / Jac;
+        } else {
+          nV = nV / Jac;
+        }
         auto dotP = utils::norm(xp-xb, nV);
 
         // if (dotP < 0.0) {

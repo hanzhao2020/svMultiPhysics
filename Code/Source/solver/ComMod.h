@@ -1503,6 +1503,9 @@ class urisType
     // Iteration count.
     int cnt = 1000000;
 
+    // pressurization time
+    double pressurization_time = 0.0;
+
     // URIS: signed distance function of each node to the uris valves (1D array).
     Vector<double> dirac_delta_func;
 
@@ -1524,15 +1527,18 @@ class urisType
     // Relaxation factor to compute weighted averages of pressure values.
     double relax_factor = 0.5;
 
-    // Array to store the fluid mesh elements that the uris node is in (2D array).
-    Array<int> elemId;
-
     // Array to count how many times a uris node is found in the fluid mesh of a processor (1D array).
     Vector<int> elemCounter;
+
+    // Array to store the fluid mesh elements that the uris node is in (2D array).
+    Array<int> elemId;
 
     // Derived type variables
     // IB meshes
     std::vector<mshType> msh;
+
+    // Reserved leaflet surface normal
+    bool reverse_normal = false;
 
     // Scaffold mesh
     bool scaffold_flag = false;
