@@ -15,7 +15,6 @@
 #include "read_msh.h"
 #include "VtkData.h"
 
-
 namespace uris { 
 
 /// @brief This subroutine computes the mean pressure and flux on the 
@@ -61,7 +60,6 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   for (int iM = 0; iM < com_mod.nMsh; iM++) {
     volU += all_fun::integ(com_mod, cm_mod, iM, sUPS);
   }
-
 
   // Let's compute right side
   Array<double> sDST(1,com_mod.tnNo);
@@ -237,8 +235,6 @@ void uris_update_disp(ComMod& com_mod, CmMod& cm_mod) {
   DebugMsg dmsg(__func__, com_mod.cm.idcm());
   dmsg.banner();
   #endif
-
-  // using namespace consts;
 
   auto& cm = com_mod.cm;
   // auto& eq = com_mod.eq;

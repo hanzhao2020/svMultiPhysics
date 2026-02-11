@@ -1290,6 +1290,7 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
     } 
 
     if (com_mod.urisFlag) {
+      // Write SDF for RIS valve
       for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
         cOut = cOut + 1;
         int is = outS[cOut]; 
@@ -1411,8 +1412,6 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
     nSh = nSh + d[iM].nNo;
   }
 
-  // std::cout << "nOut: " << nOut << std::endl;
-
   // Writing all solutions
   //
   for (int iOut = 1; iOut < nOut; iOut++) {
@@ -1432,9 +1431,6 @@ void write_vtus(Simulation* simulation, const Array<double>& lA, const Array<dou
 
       nSh = nSh + d[iM].nNo;
     }
-
-    // std::cout << "iOut: " << iOut << std::endl;
-    // std::cout << "outName: " << outNames[iOut] << std::endl;
 
     vtk_writer->set_point_data(outNames[iOut], tmpV);
   }
