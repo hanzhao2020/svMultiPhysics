@@ -37,11 +37,6 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   auto& uris_obj = uris[iUris];
 
   const int nsd = com_mod.nsd;
-  // const int cEq = com_mod.cEq;
-
-  // auto& An = com_mod.An;
-  // auto& Ad = com_mod.Ad;
-  // auto& Dn = com_mod.Dn;
   auto& Yn = com_mod.Yn;
 
   // Let's conpute the mean pressure in the two regions of the fluid mesh 
@@ -59,9 +54,6 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   sUPS = 0.0;
   for (size_t j = 0; j < sUPS.size(); j++) {
     if (uris_obj.sdf(j) >= 0.0 && uris_obj.sdf(j) <= Deps) {
-    // Reverse the sdf distance for aortic valve
-    // [HZ] Adjust this value to be more flexible about the box
-    // if (uris_obj.sdf(j) < 0.0 && uris_obj.sdf(j) >= -Deps) { 
         sUPS(0,j) = 1.0;
     }
   }
@@ -76,8 +68,6 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   sDST = 0.0;
   for (size_t j = 0; j < sDST.size(); j++) {
     if (uris_obj.sdf(j) < 0.0 && uris_obj.sdf(j) >= -Deps) {
-    // Reverse the sdf distance for aortic valve
-    // if (uris_obj.sdf(j) >= 0.0 && uris_obj.sdf(j) <= Deps) {
         sDST(0,j) = 1.0;
     }
   } 
@@ -98,7 +88,6 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   int iEq = 0;
   int m = 1;
   int s = eq[iEq].s + nsd;
-  // int e = s + m - 1;
 
   Array<double> tmpV(maxNSD, com_mod.tnNo);
   for (int j = 0; j < Yn.ncols(); j++) {
@@ -130,8 +119,7 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   //  If the uris has passed the closing state
-  int stab_cycle = 1; // The uris is considered to be closed if within this number of stages
-  // std::cout << "rank: " << cm.idcm() << " pressurization time: " << uris_obj.pressurization_time << std::endl;
+  int stab_cycle = 1; // The uris is considered to be closed if within this number of states
   if (uris_obj.cnt > stab_cycle*uris_obj.DxClose.nrows() 
       && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
     if (uris_obj.meanPD > uris_obj.meanPU) {
@@ -170,11 +158,6 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   auto& uris_obj = uris[iUris];
 
   const int nsd = com_mod.nsd;
-  // const int cEq = com_mod.cEq;
-
-  // auto& An = com_mod.An;
-  // auto& Ad = com_mod.Ad;
-  // auto& Dn = com_mod.Dn;
   auto& Yn = com_mod.Yn;
 
   // Let's compute the neighboring region below the valve normal. When
@@ -188,8 +171,6 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
 
   for (int i = 0; i < com_mod.tnNo; i++) {
     if (uris_obj.sdf(i) <= -Deps) {
-    // Reverse the sdf distance for aortic valve
-    // if (uris_obj.sdf(i) >= Deps) {
       sImm(0,i) = 1.0;
     }
   }
@@ -203,7 +184,6 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   
   int m = nsd;
   int s = eq[iEq].s;
-  // int e = s + m - 1;
 
   Array<double> tmpV(maxNSD, com_mod.tnNo);
   for (int i = 0; i < nsd; i++) {
@@ -229,7 +209,7 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   // If the uris has passed the open state
-  int stab_cycle = 1; // The uris is considered to be open if within this number of stages
+  int stab_cycle = 1; // The uris is considered to be open if within this number of states
   if (uris_obj.cnt > stab_cycle*uris_obj.DxOpen.nrows()
       && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
     if (meanV < 0.0) {
@@ -330,8 +310,6 @@ void uris_update_disp(ComMod& com_mod, CmMod& cm_mod) {
 
     for (int nd = 0; nd < uris_obj.tnNo; nd++) {
       double divisor = static_cast<double>(std::max(1, uris_obj.elemCounter(nd)));
-      // Vector<double> Yd_vec = uris_obj.Yd.col(nd) / div;
-      // uris_obj.Yd.set_col(nd, Yd_vec);
       for (int i = 0; i < nsd; i++) {
         uris_obj.Yd(i,nd) /= divisor;
       }
@@ -563,7 +541,6 @@ void uris_read_msh(Simulation* simulation) {
       // Read mesh nodal coordinates and element connectivity.
       uris_read_sv(simulation, mesh, mesh_param);
 
-      // // [HZ] eType is not NA, neglecting this for now
       // IF (uris(iUris)%msh(iM)%eType .EQ. eType_NA) THEN
       // CALL READCCNE(lPN, uris(iUris)%msh(iM))
       // END IF
@@ -691,20 +668,15 @@ void uris_read_msh(Simulation* simulation) {
         }
       }
       uris_obj.tnNo = a;
-      // mesh.x.clear();
-      // dispOpen.clear();
-      // dispClose.clear();
     }
     uris_obj.x.resize(nsd, uris_obj.tnNo);
     uris_obj.x_prev.resize(nsd, uris_obj.tnNo);
-    uris_obj.x_next.resize(nsd, uris_obj.tnNo);
     if (!uris_obj.clsFlg) {
       int nrowsDxOpen = uris_obj.DxOpen.nrows();
       for (int i = 0; i < uris_obj.x.nrows(); i++) {
         for (int j = 0; j < uris_obj.x.ncols(); j++) {
           uris_obj.x(i,j) = uris_obj.DxOpen(nrowsDxOpen-1,i,j);
           uris_obj.x_prev(i,j) = uris_obj.DxOpen(nrowsDxOpen-1,i,j);
-          uris_obj.x_next(i,j) = uris_obj.DxOpen(nrowsDxOpen-1,i,j);
         }
       }
     } else {
@@ -713,7 +685,6 @@ void uris_read_msh(Simulation* simulation) {
         for (int j = 0; j < uris_obj.x.ncols(); j++) {
           uris_obj.x(i,j) = uris_obj.DxClose(nrowsDxClose-1,i,j);
           uris_obj.x_prev(i,j) = uris_obj.DxClose(nrowsDxClose-1,i,j);
-          uris_obj.x_next(i,j) = uris_obj.DxClose(nrowsDxClose-1,i,j);
         }
       }
     }
@@ -721,7 +692,6 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.v = 0.0;
     uris_obj.Yd.resize(nsd, uris_obj.tnNo);
     uris_obj.Yd = 0.0;
-    // gX.clear();
 
     // Setting mesh.gN, mesh.lN parameter
     int b = 0;
@@ -857,7 +827,6 @@ void uris_write_vtus(ComMod& com_mod) {
         }
       }
 
-      // [HZ] Need to check this if it's 1 or 0 
       outNames[0] = "coordinates";
       outNames[1] = "URIS_displacement";
       outNames[2] = "URIS_velocity";
@@ -879,7 +848,6 @@ void uris_write_vtus(ComMod& com_mod) {
     // Writing the position data
     int iOut = 0;
     int s = outS(iOut);
-    // int e = outS(iOut+1) - 1;
     int nSh = 0;
     Array<double> tmpV(maxNSD, nNo);
     tmpV = 0.0;
@@ -972,11 +940,6 @@ void uris_calc_sdf(ComMod& com_mod) {
     for (int i = 0; i < nsd; i++) {
       for (int j = 0; j < uris_obj.tnNo; j++) {
         if (uris_obj.use_valve_velocity) {
-          // uris_obj.v(i,j) = (uris_obj.x_next(i,j) - uris_obj.x_prev(i,j)) / (2*com_mod.dt);
-          
-          // uris_obj.v(i,j) = (-eq.af * (1 - eq.af) *  uris_obj.x_prev(i,j)
-          //                     + eq.af * (1 - eq.af) * uris_obj.x_next(i,j)
-          //                   + (1 - 2 * eq.af) * uris_obj.x(i,j)) / com_mod.dt;
           uris_obj.v(i,j) = (uris_obj.x(i,j) - uris_obj.x_prev(i,j)) / com_mod.dt;
         } else {
           uris_obj.v(i,j) = 0.0;
@@ -984,11 +947,14 @@ void uris_calc_sdf(ComMod& com_mod) {
         uris_obj.x_prev(i,j) = uris_obj.x(i,j);
       }
     }
-    
+
     if (com_mod.cTS > 1 && cnt < uris_obj.cnt) {
-      // std::cout << "cts:" << com_mod.cTS << std::endl;
       uris_obj.sdf_t = 0.0;
-      continue;
+      if (com_mod.stFileFlag && uris_obj.sdf[0] == -1.0) {
+        uris_obj.sdf = uris_obj.sdf_default;
+      } else {
+        continue;
+      }
     } else {
       uris_obj.sdf = uris_obj.sdf_default;
       uris_obj.sdf_t = 0.0;
@@ -1118,13 +1084,6 @@ void uris_calc_sdf(ComMod& com_mod) {
         }
         auto dotP = utils::norm(xp-xb, nV);
 
-        // if (dotP < 0.0) {
-        //   dotP = -1.0;
-        // } else {
-        //   dotP = 1.0;
-        // }
-        // uris_obj.sdf[ca] = dotP * minS;
-
         // [HZ] Improved implementation for SDF sign
         double sdf_sign = 1.0;
         if (uris_obj.clsFlg) {
@@ -1142,7 +1101,6 @@ void uris_calc_sdf(ComMod& com_mod) {
           }
         }
 
-        // uris_obj.sdf[com_mod.msh[mesh_ind].gN(ca)] = sdf_sign * minS;
         uris_obj.sdf[ca] = sdf_sign * minS;
 
         if (uris_obj.use_valve_velocity) {
@@ -1194,7 +1152,11 @@ void uris_calc_sdf(ComMod& com_mod) {
     auto& uris_obj = uris[iUris];
     
     if (!uris_obj.scaffold_flag || com_mod.cTS > 1) {
-      continue;
+      if (com_mod.stFileFlag && uris_obj.sdf_scaffold[0] == -1.0) {
+        uris_obj.sdf_scaffold = uris_obj.sdf_default;
+      } else {
+        continue;
+      }
     }
 
     auto& scaffold_mesh = uris_obj.scaffold_mesh;
@@ -1222,9 +1184,6 @@ void uris_calc_sdf(ComMod& com_mod) {
     // this is a simplifying assumption. 
     Vector<double> xp_scaf(nsd);
     for (int ca = 0; ca < com_mod.tnNo; ca++) {
-    // int mesh_ind = 0;
-    // for (int ca = 0; ca < com_mod.msh[mesh_ind].nNo; ca++) {
-      // std::cout << "URIS scaffold SDF index: " << ca << std::endl;
       double minS_scaf = std::numeric_limits<double>::max();
       for (int i = 0; i < nsd; i++) {
         xp_scaf(i) = com_mod.x(i,ca);
@@ -1265,7 +1224,6 @@ void uris_calc_sdf(ComMod& com_mod) {
           }
         }
         uris_obj.sdf_scaffold[ca] = minS_scaf;
-        // uris_obj.sdf_scaffold[com_mod.msh[mesh_ind].gN(ca)] = minS_scaf;
       }
     }
   }
@@ -1399,8 +1357,6 @@ int same_side(Vector<double>& v1, Vector<double>& v2, Vector<double>& v3,
   double dotV4 = utils::norm(N, v41);
   double dotP = utils::norm(N, vp1);
   // check if P and P4 are from the same side
-  // int sn = utils::sign(dotP);
-  // if (sn == 1) {
   if ((dotP >= 0 && dotV4 >= 0) || (dotP < 0 && dotV4 < 0)) {
     sameside = 1;
   }

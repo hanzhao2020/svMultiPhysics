@@ -1360,7 +1360,6 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
       uris[iUris].DxClose.resize(CloseN(iUris), com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].x.resize(com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].x_prev.resize(com_mod.nsd, uris[iUris].tnNo);
-      uris[iUris].x_next.resize(com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].v.resize(com_mod.nsd, uris[iUris].tnNo);
       uris[iUris].Yd.resize(com_mod.nsd, uris[iUris].tnNo);
       DxOpenFlat[iUris].resize(DxOpenFlatSize(iUris));
@@ -1371,7 +1370,6 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
   for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
     cm.bcast(cm_mod, uris[iUris].x);
     cm.bcast(cm_mod, uris[iUris].x_prev);
-    cm.bcast(cm_mod, uris[iUris].x_next);
     cm.bcast(cm_mod, uris[iUris].v);
     cm.bcast(cm_mod, uris[iUris].Yd);
     cm.bcast(cm_mod, DxOpenFlat[iUris]);

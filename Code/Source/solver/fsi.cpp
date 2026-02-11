@@ -62,15 +62,6 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
   dmsg << "pS0.size(): " << pS0.size();
   #endif
 
-  // if (com_mod.cm.idcm() == 0) {
-  //   std::cout << "tnNo: " << com_mod.tnNo << std::endl;
-  //   std::cout << "tDof: " << com_mod.tDof << std::endl;
-  //   std::cout << "dof: " << com_mod.dof << std::endl;
-  //   std::cout << "mesh name: " << lM.name << std::endl;
-  //   std::cout << "mesh gnno: " << lM.gnNo << std::endl;
-  //   std::cout << "mesh nEl: " << lM.nEl << std::endl;
-  // }
-
   Vector<int> ptr(eNoN); 
   Array3<double> lK(dof*dof,eNoN,eNoN), lKd(dof*nsd,eNoN,eNoN);
   Array<double> xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN), dl(tDof,eNoN), bfl(nsd,eNoN), 
@@ -203,7 +194,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
 
       double w = fs_1[0].w(g) * Jac;
 
-      // Plot the coordinates of the quad point in the current configuration
+      // Compute the resistance factor for the URIS
       if (com_mod.urisFlag) {
         Vector<double> distSrf(com_mod.nUris);
         Vector<double> distSrf_scaffold(com_mod.nUris);
@@ -236,45 +227,19 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
               DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
                         (2*sdf_deps_temp*sdf_deps_temp);
-              // if (DDirTmp > DDir) {DDir = DDirTmp;}
             }
           }
 
           if (com_mod.uris[iUris].clsFlg) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
             ris_resistance = com_mod.uris[iUris].resistance_close;
-            // Gradual transition using quadratic interpolation
-            // if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxClose.nrows()) {
-            //   // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxClose.nrows() steps
-            //   double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
-            //                    static_cast<double>(com_mod.uris[iUris].DxClose.nrows());
-            //   // Quadratic interpolation: smooth transition
-            //   double quad_progress = progress * progress;
-            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps + 
-            //                 quad_progress * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
-            // } else {
-            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
-            // }
           } else {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
             ris_resistance = com_mod.uris[iUris].resistance;
-            // // Gradual transition using quadratic interpolation
-            // if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxOpen.nrows()) {
-            //   // Quadratic interpolation: sdf_deps -> sdf_deps_close over DxOpen.nrows() steps
-            //   double progress = static_cast<double>(com_mod.uris[iUris].DxOpen.nrows() - com_mod.uris[iUris].cnt) / 
-            //                    static_cast<double>(com_mod.uris[iUris].DxOpen.nrows());
-            //   // Quadratic interpolation: smooth transition
-            //   double quad_progress = progress * progress;
-            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps + 
-            //                 quad_progress * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
-            // } else {
-            //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
-            // }
           }
           if (distSrf(iUris) <= sdf_deps_temp) {
             DDirTmp = (1 + cos(pi*distSrf(iUris)/sdf_deps_temp))/
                       (2*sdf_deps_temp*sdf_deps_temp);
-            // if (DDirTmp > DDir) {DDir = DDirTmp;}
           }
           DDir = DDirTmp;
         }

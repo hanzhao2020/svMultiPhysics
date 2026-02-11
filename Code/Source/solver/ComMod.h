@@ -1209,7 +1209,7 @@ class eqType
     /// @brief URIS: Outputs
     std::vector<outputType> outURIS;
 
-    /// @brief Explicit geometry coupling
+    /// @brief Explicit geometry coupling for FSI problem
     bool expl_geom_cpl = false;
 
     /// @brief Body force associated with this equation
@@ -1465,9 +1465,6 @@ class urisType
     // Position coordinates of last time step.
     Array<double> x_prev;
 
-    // Position coordinates of next time step.
-    Array<double> x_next;
-
     // Time derivative of the position coordinates (2D array).
     Array<double> v;
 
@@ -1494,6 +1491,9 @@ class urisType
 
     // Whether to use the valve velocity.
     bool use_valve_velocity = false;
+
+    // Reverse the surface normal vector
+    bool reverse_normal = false;
 
     // Displacements of the valve when it opens (3D array).
     Array3<double> DxOpen;
@@ -1543,9 +1543,6 @@ class urisType
     // Derived type variables
     // IB meshes
     std::vector<mshType> msh;
-
-    // Reserved leaflet surface normal
-    bool reverse_normal = false;
 
     // Scaffold mesh
     bool scaffold_flag = false;

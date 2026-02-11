@@ -852,9 +852,11 @@ void initialize(Simulation* simulation, Vector<double>& timeP)
     for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
       auto& uris_obj = com_mod.uris[iUris];
       uris_obj.sdf.resize(com_mod.tnNo);
+      uris_obj.sdf = -1.0;
       uris_obj.sdf_t.resize(nsd, com_mod.tnNo);
       if (uris_obj.scaffold_flag) {
         uris_obj.sdf_scaffold.resize(com_mod.tnNo);
+        uris_obj.sdf_scaffold = -1.0;
       }
     }
   }
