@@ -1381,6 +1381,7 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
   lEq.minItr = eq_params->min_iterations.value();
   lEq.maxItr = eq_params->max_iterations.value();
   lEq.tol = eq_params->tolerance.value();
+  lEq.expl_geom_cpl = eq_params->explicit_geometric_coupling.value();
 
   // Initialize coupled BC.
   //
@@ -1796,7 +1797,9 @@ void read_files(Simulation* simulation, const std::string& file_name)
     if (eq.phys == EquationType::phys_mesh) {   
       if (!com_mod.mvMsh) {
         throw std::runtime_error("mesh equation can only be specified after FSI equation");
-      }     
+      }
+      // Use the explicit geometry coupling flag of the FSI equation.
+      eq.expl_geom_cpl = com_mod.eq[0].expl_geom_cpl; 
     }     
   }
   #ifdef debug_read_files

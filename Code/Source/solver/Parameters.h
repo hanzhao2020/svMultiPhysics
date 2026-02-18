@@ -1377,6 +1377,7 @@ class EquationParameters : public ParameterLists
 
     Parameter<std::string> type;
     Parameter<bool> use_taylor_hood_type_basis;
+    Parameter<bool> explicit_geometric_coupling;
 
     // Inverse of Darcy permeability. Default value of 0.0 for Navier-Stokes and non-zero for Navier-Stokes-Brinkman
     Parameter<double> inverse_darcy_permeability;
