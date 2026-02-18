@@ -1172,6 +1172,7 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, &uris[iUris].resistance);
     cm.bcast(cm_mod, &uris[iUris].resistance_close);
     cm.bcast(cm_mod, &uris[iUris].pressurization_time);
+    cm.bcast(cm_mod, &uris[iUris].transition_state_lock_multiplier);
     cm.bcast(cm_mod, &uris[iUris].clsFlg);
     cm.bcast(cm_mod, &uris[iUris].cnt);
     cm.bcast(cm_mod, &uris[iUris].scF);

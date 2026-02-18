@@ -1550,6 +1550,10 @@ class urisType
 
     Vector<double> sdf_scaffold;
 
+    // The RIS valve will stay the same state for the number of open/close time
+    // steps specified by this multiplier.
+    int transition_state_lock_multiplier;
+
 };
 
 /// @brief The ComMod class duplicates the data structures in the Fortran COMMOD module

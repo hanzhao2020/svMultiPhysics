@@ -1655,6 +1655,7 @@ class URISMeshParameters : public ParameterLists
     Parameter<std::string> scaffold_file_path; // File path for the scaffold
     Parameter<double> pressurization_time; // Time for pressurization
     Parameter<bool> reverse_surface_normal; // Whether to reverse the surface normal vector
+    Parameter<int> transition_state_lock_multiplier; // Multiplier for the transition state lock
 };
 
 

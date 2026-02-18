@@ -117,8 +117,7 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   //  If the uris has passed the closing state
-  int stab_cycle = 1; // The uris is considered to be closed if within this number of states
-  if (uris_obj.cnt > stab_cycle*uris_obj.DxClose.nrows() 
+  if (uris_obj.cnt > uris_obj.transition_state_lock_multiplier*uris_obj.DxClose.nrows() 
       && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
     if (uris_obj.meanPD > uris_obj.meanPU) {
       uris_obj.cnt = 1;
@@ -207,8 +206,7 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   }
 
   // If the uris has passed the open state
-  int stab_cycle = 1; // The uris is considered to be open if within this number of states
-  if (uris_obj.cnt > stab_cycle*uris_obj.DxOpen.nrows()
+  if (uris_obj.cnt > uris_obj.transition_state_lock_multiplier*uris_obj.DxOpen.nrows()
       && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
     if (meanV < 0.0) {
       uris_obj.cnt = 1;
@@ -526,6 +524,7 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.use_valve_velocity = param->use_valve_velocity();
     uris_obj.reverse_normal = param->reverse_surface_normal();
     uris_obj.pressurization_time = param->pressurization_time();
+    uris_obj.transition_state_lock_multiplier = param->transition_state_lock_multiplier();
 
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
       auto mesh_param = param->URIS_face_parameters[iM];

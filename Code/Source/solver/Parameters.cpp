@@ -2839,6 +2839,7 @@ URISMeshParameters::URISMeshParameters()
   set_parameter("Scaffold_file_path", "",  !required, scaffold_file_path);
   set_parameter("Pressurization_time", 0.0,  !required, pressurization_time);
   set_parameter("Reverse_surface_normal", false,  !required, reverse_surface_normal);
+  set_parameter("Transition_state_lock_multiplier", 1,  !required, transition_state_lock_multiplier);
 }
 
 void URISMeshParameters::print_parameters()
