@@ -171,6 +171,8 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
     //
     double Jac{0.0};
     Array<double> ksix(nsd,nsd);
+    Vector<double> ris_factor_vec(fs_1[0].nG);
+    ris_factor_vec = 0.0;
 
     for (int g = 0; g < fs_1[0].nG; g++) {
       if (g == 0 || !fs_1[1].lShpF) {
@@ -220,6 +222,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
         double ris_resistance = 0.0;
         double sdf_deps_temp = 0;
         double DDirTmp = 0.0;
+        ris_factor = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
           if (com_mod.uris[iUris].scaffold_flag) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps_scaffold;
@@ -242,12 +245,13 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
                       (2*sdf_deps_temp*sdf_deps_temp);
           }
           DDir = DDirTmp;
+
+          ris_factor += ris_resistance * DDir;
         }
-        if (com_mod.urisActFlag) {
-          ris_factor = ris_resistance * DDir;
-        } else {
+        if (!com_mod.urisActFlag) {
           ris_factor = 0.0;
         }
+        ris_factor_vec[g] = ris_factor;
       }
 
       if (nsd == 3) {
@@ -333,7 +337,8 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
           case Equation_fluid: {
             auto N0 = fs_2[0].N.col(g);
             auto N1 = fs_2[1].N.col(g);
-            
+
+            ris_factor = ris_factor_vec[g];
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             //fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
             fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, ris_factor, vValve);

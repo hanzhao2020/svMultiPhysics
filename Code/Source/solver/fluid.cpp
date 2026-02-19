@@ -624,6 +624,8 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
 
     double Jac{0.0};
     Array<double> ksix(nsd,nsd);
+    Vector<double> ris_factor_vec(fs[0].nG);
+    ris_factor_vec = 0.0;
 
     for (int g = 0; g < fs[0].nG; g++) {
       #ifdef debug_construct_fluid
@@ -680,6 +682,7 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
         double ris_resistance = 0.0;
         double sdf_deps_temp = 0;
         double DDirTmp = 0.0;
+        ris_factor = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
           if (com_mod.uris[iUris].scaffold_flag) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps_scaffold;
@@ -702,12 +705,13 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
                       (2*sdf_deps_temp*sdf_deps_temp);
           }
           DDir = DDirTmp;
+
+          ris_factor += ris_resistance * DDir;
         }
-        if (com_mod.urisActFlag) {
-          ris_factor = ris_resistance * DDir;
-        } else {
+        if (!com_mod.urisActFlag) {
           ris_factor = 0.0;
         }
+        ris_factor_vec[g] = ris_factor;
       }
 
       // Compute momentum residual and tangent matrix.
@@ -766,6 +770,7 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const Array<double>& Ag
       if (nsd == 3) {
         auto N0 = fs[0].N.rcol(g); 
         auto N1 = fs[1].N.rcol(g); 
+        ris_factor = ris_factor_vec[g];
         fluid_3d_c(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, ris_factor, vValve);
 
       } else if (nsd == 2) {
