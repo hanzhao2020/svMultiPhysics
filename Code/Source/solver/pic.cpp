@@ -143,6 +143,8 @@ void picc(Simulation* simulation)
     pic_eth(simulation);
   }
 
+  // If explicit geometric coupling is not used, update the acceleration, 
+  // velocity, and displacement for the FSI equation as usual
   if (eq.phys == Equation_FSI && !eq.expl_geom_cpl) {
     int s = com_mod.eq[1].s;
     int e = com_mod.eq[1].e;
@@ -264,6 +266,8 @@ void picc(Simulation* simulation)
 
   if (eq.coupled) {
     if (!eq.expl_geom_cpl) {
+      // For coupled equations, if explicit geometric coupling is not used, 
+      // increment the equation counter after each linear solve
       cEq = cEq + 1;
       #ifdef debug_picc
       dmsg << "eq " << " coupled ";
@@ -292,7 +296,8 @@ void picc(Simulation* simulation)
         }
       }
     } else {
-      // Increment the equation counter if the current equation is ok
+      // If explicit geometric coupling is used for coupled equations, 
+      // only update the equation counter if the current equation is converged
       if (eq.ok) {
         cEq = cEq + 1;
         if (cEq >= com_mod.nEq) {
