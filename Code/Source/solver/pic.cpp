@@ -146,6 +146,9 @@ void picc(Simulation* simulation)
   // If explicit geometric coupling is not used, update the acceleration, 
   // velocity, and displacement for the FSI equation as usual
   if (eq.phys == Equation_FSI && !eq.expl_geom_cpl) {
+    if (com_mod.eq[1].phys != Equation_mesh) {
+      throw std::runtime_error("PICC: FSI simulation requires a mesh motion equation as the second equation.");
+    }
     int s = com_mod.eq[1].s;
     int e = com_mod.eq[1].e;
     #ifdef debug_picc
@@ -306,6 +309,9 @@ void picc(Simulation* simulation)
       }
       // Update the acceleration, velocity, and displacement when the FSI equation is ok
       if (eq.ok && eq.phys == Equation_FSI) {
+        if (com_mod.eq[1].phys != Equation_mesh) {
+          throw std::runtime_error("PICC: FSI simulation requires a mesh motion equation as the second equation.");
+        }
         int s = com_mod.eq[1].s;
         int e = com_mod.eq[1].e;
         for (int Ac = 0; Ac < tnNo; Ac++) {

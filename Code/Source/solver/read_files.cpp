@@ -1460,6 +1460,13 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
 
   set_equation_properties(simulation, eq_params, lEq, propL, outPuts, nDOP);
 
+  // Check if explicit geometric coupling is allowed for the equation
+  if (lEq.expl_geom_cpl) {
+    if (lEq.phys != EquationType::phys_FSI) {
+      throw std::runtime_error("Explicit geometric coupling is only allowed for FSI equation.");
+    }
+  }
+
   // Read VTK files or boundaries. [TODO:DaveP] this is not a correct comment.
   read_outputs(simulation, eq_params, lEq, nDOP, outPuts);
 
