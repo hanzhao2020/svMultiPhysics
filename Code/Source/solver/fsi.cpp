@@ -23,7 +23,7 @@ namespace fsi {
 void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Array<double>& Ag, 
     const Array<double>& Yg, const Array<double>& Dg)
 {
-  #define n_debug_construct_fsi 
+  #define n_debug_construct_fsi
   #ifdef debug_construct_fsi
   DebugMsg dmsg(__func__, com_mod.cm.idcm());
   dmsg.banner();
@@ -78,7 +78,15 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
   //
   double struct_3d_time = 0.0;
   double fluid_3d_time = 0.0;
-  double DDir = 0.0;
+  
+  Array<double> vValve;
+  if (com_mod.urisFlag) {
+    vValve.resize(com_mod.nUris, nsd);
+  } else {
+    vValve.resize(0, 0);
+  }
+  vValve = 0.0;
+  double ris_factor = 0.0;
 
   for (int e = 0; e < lM.nEl; e++) {
     // setting globals
@@ -163,6 +171,8 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
     //
     double Jac{0.0};
     Array<double> ksix(nsd,nsd);
+    Vector<double> ris_factor_vec(fs_1[0].nG);
+    ris_factor_vec = 0.0;
 
     for (int g = 0; g < fs_1[0].nG; g++) {
       if (g == 0 || !fs_1[1].lShpF) {
@@ -186,44 +196,63 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
 
       double w = fs_1[0].w(g) * Jac;
 
-      // Plot the coordinates of the quad point in the current configuration
+      // Compute the resistance factor for the URIS
       if (com_mod.urisFlag) {
         Vector<double> distSrf(com_mod.nUris);
+        Vector<double> distSrf_scaffold(com_mod.nUris);
         distSrf = 0.0;
+        distSrf_scaffold = 0.0;
+        vValve = 0.0;
         for (int a = 0; a < eNoN; a++) {
           int Ac = lM.IEN(a,e);
           for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
             distSrf(iUris) += fs_1[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
+            if (com_mod.uris[iUris].use_valve_velocity) {
+              for (int i = 0; i < nsd; i++) {
+                vValve(iUris,i) += fs_1[0].N(a,g) * com_mod.uris[iUris].sdf_t(i, Ac);
+              }
+            }
+            if (com_mod.uris[iUris].scaffold_flag) {
+              distSrf_scaffold(iUris) += fs_1[0].N(a,g) * std::fabs(com_mod.uris[iUris].sdf_scaffold(Ac));
+            }
           }
         }
 
-        DDir = 0.0;
+        double DDir = 0.0;
+        double ris_resistance = 0.0;
         double sdf_deps_temp = 0;
         double DDirTmp = 0.0;
+        ris_factor = 0.0;
         for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
-          // if (distSrf(iUris) <= com_mod.uris[iUris].sdf_deps) {
-          //   DDirTmp = (1 + cos(pi*distSrf(iUris)/com_mod.uris[iUris].sdf_deps))/
-          //             (2*com_mod.uris[iUris].sdf_deps*com_mod.uris[iUris].sdf_deps);
-          //   if (DDirTmp > DDir) {DDir = DDirTmp;}
-          // }
+          if (com_mod.uris[iUris].scaffold_flag) {
+            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_scaffold;
+            ris_resistance = com_mod.uris[iUris].resistance_close;
+            if (distSrf_scaffold(iUris) <= sdf_deps_temp) {
+              DDirTmp = (1 + cos(pi*distSrf_scaffold(iUris)/sdf_deps_temp))/
+                        (2*sdf_deps_temp*sdf_deps_temp);
+            }
+          }
 
           if (com_mod.uris[iUris].clsFlg) {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+            ris_resistance = com_mod.uris[iUris].resistance_close;
           } else {
             sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+            ris_resistance = com_mod.uris[iUris].resistance;
           }
           if (distSrf(iUris) <= sdf_deps_temp) {
             DDirTmp = (1 + cos(pi*distSrf(iUris)/sdf_deps_temp))/
                       (2*sdf_deps_temp*sdf_deps_temp);
-            if (DDirTmp > DDir) {DDir = DDirTmp;}
           }
+          DDir = DDirTmp;
+
+          ris_factor += ris_resistance * DDir;
         }
-
-        if (!com_mod.urisActFlag) {DDir = 0.0;}
-
-        // std::cout << "===== DDir: " << DDir << std::endl;
+        if (!com_mod.urisActFlag) {
+          ris_factor = 0.0;
+        }
+        ris_factor_vec[g] = ris_factor;
       }
-
 
       if (nsd == 3) {
         switch (cPhys) {
@@ -233,7 +262,7 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             // fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
-            fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir);
+            fluid::fluid_3d_m(com_mod, vmsStab, fs_1[0].eNoN, fs_1[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, ris_factor, vValve);
 
           } break;
 
@@ -308,10 +337,11 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
           case Equation_fluid: {
             auto N0 = fs_2[0].N.col(g);
             auto N1 = fs_2[1].N.col(g);
-            
+
+            ris_factor = ris_factor_vec[g];
             // using zero permeability to use Navier-Stokes here, not Navier-Stokes-Brinkman
             //fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0);
-            fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, DDir);
+            fluid::fluid_3d_c(com_mod, vmsStab, fs_2[0].eNoN, fs_2[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, 0.0, ris_factor, vValve);
           } break;
 
           case Equation_ustruct:
