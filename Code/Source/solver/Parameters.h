@@ -1377,7 +1377,6 @@ class EquationParameters : public ParameterLists
 
     Parameter<std::string> type;
     Parameter<bool> use_taylor_hood_type_basis;
-    Parameter<bool> explicit_geometric_coupling;
 
     // Explicit geometric coupling for FSI simulations: the fluid-structure equations
     // are solved to convergence using the mesh displacement from the previous time step,
