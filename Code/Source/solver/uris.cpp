@@ -1013,6 +1013,20 @@ void uris_calc_sdf(ComMod& com_mod) {
         }
       }
       if (inside) {
+        // Only compute SDF for nodes in the fluid domain
+        bool in_fluid = false;
+        for (int iEq = 0; iEq < com_mod.nEq; iEq++) {
+          if (all_fun::is_domain(com_mod, com_mod.eq[iEq], ca, Equation_fluid) ||
+              all_fun::is_domain(com_mod, com_mod.eq[iEq], ca, Equation_CMM) ||
+              all_fun::is_domain(com_mod, com_mod.eq[iEq], ca, Equation_stokes)) {
+            in_fluid = true;
+            break;
+          }
+        }
+        if (!in_fluid) {
+          continue;
+        }
+
         // This point is inside the BBox
         // Find the closest URIS face centroid
         int Ec = -1;
