@@ -80,6 +80,7 @@ void picc(Simulation* simulation)
   int s = eq.s;
   int e = eq.e;
 
+
   std::array<double,4> coef;
   coef[0] = eq.gam * dt;
   coef[1] = eq.beta*dt*dt;

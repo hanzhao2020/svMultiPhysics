@@ -2829,12 +2829,17 @@ URISMeshParameters::URISMeshParameters()
   // Parameters under Add_mesh element.
   //
   set_parameter("Mesh_scale_factor", 1.0,  !required, mesh_scale_factor);
-  set_parameter("Thickness", 0.04,  !required, thickness);
+  set_parameter("Thickness", 0.25,  !required, thickness);
   set_parameter("Closed_thickness", 0.25,  !required, close_thickness);
   set_parameter("Resistance", 1.0e5,  !required, resistance);
   set_parameter("Closed_resistance", 1.0e5,  !required, resistance_close);
+  set_parameter("Use_valve_velocity", false,  !required, use_valve_velocity);
   set_parameter("Valve_starts_as_closed", true,  !required, valve_starts_as_closed);
   set_parameter("Positive_flow_normal_file_path", "",  !required, positive_flow_normal_file_path);
+  set_parameter("Scaffold_file_path", "",  !required, scaffold_file_path);
+  set_parameter("Pressurization_time", 0.0,  !required, pressurization_time);
+  set_parameter("Reverse_surface_normal", false,  !required, reverse_surface_normal);
+  set_parameter("Transition_state_lock_multiplier", 1,  !required, transition_state_lock_multiplier);
 }
 
 void URISMeshParameters::print_parameters()
@@ -2948,7 +2953,6 @@ void URISFaceParameters::set_values(tinyxml2::XMLElement* face_elem)
     item = item->NextSiblingElement();
   }
 }
-
 
 //////////////////////////////////////////////////////////
 //                 LinearAlgebraParameters              //

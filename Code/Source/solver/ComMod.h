@@ -1462,17 +1462,38 @@ class urisType
     // Position coordinates (2D array: rows x columns).
     Array<double> x;
 
+    // Position coordinates of last time step.
+    Array<double> x_prev;
+
+    // Time derivative of the position coordinates (2D array).
+    Array<double> v;
+
     // Displacement (new) (2D array).
     Array<double> Yd;
 
     // Default signed distance value away from the valve.
     double sdf_default = 1000.0;
 
-    // Default distance value of the valve boundary (valve thickness).
-    double sdf_deps = 0.25;
+    // Default distance value of the valve boundary (half valve thickness).
+    double sdf_deps = 0.2;
 
-    // Default distance value of the valve boundary when the valve is closed.
-    double sdf_deps_close = 0.25;
+    // Default half valve thickness when valve is closed.
+    double sdf_deps_close = 0.2;
+
+    // Default half scaffold thickness.
+    double sdf_deps_scaffold = 0.1;
+
+    /// @brief URIS resistance
+    double resistance;
+
+    /// @brief URIS resistance when the valve is closed
+    double resistance_close;
+
+    // Whether to use the valve velocity.
+    bool use_valve_velocity = false;
+
+    // Reverse the surface normal vector
+    bool reverse_normal = false;
 
     // Displacements of the valve when it opens (3D array).
     Array3<double> DxOpen;
@@ -1489,8 +1510,17 @@ class urisType
     // Iteration count.
     int cnt = 1000000;
 
-    // URIS: signed distance function of each node to the uris (1D array).
+    // pressurization time
+    double pressurization_time = 0.0;
+
+    // URIS: signed distance function of each node to the uris valves (1D array).
+    Vector<double> dirac_delta_func;
+
+    // URIS: signed distance function of each node to the uris valves (1D array).
     Vector<double> sdf;
+
+    // URIS: time derivative of the signed distance field       
+    Array<double> sdf_t;
 
     // Mesh scale factor.
     double scF = 1.0;
@@ -1504,15 +1534,25 @@ class urisType
     // Relaxation factor to compute weighted averages of pressure values.
     double relax_factor = 0.5;
 
-    // Array to store the fluid mesh elements that the uris node is in (2D array).
-    Array<int> elemId;
-
     // Array to count how many times a uris node is found in the fluid mesh of a processor (1D array).
     Vector<int> elemCounter;
+
+    // Array to store the fluid mesh elements that the uris node is in (2D array).
+    Array<int> elemId;
 
     // Derived type variables
     // IB meshes
     std::vector<mshType> msh;
+
+    // Scaffold mesh
+    bool scaffold_flag = false;
+    mshType scaffold_mesh;
+
+    Vector<double> sdf_scaffold;
+
+    // The RIS valve will stay the same state for the number of open/close time
+    // steps specified by this multiplier.
+    int transition_state_lock_multiplier;
 
 };
 
@@ -1600,12 +1640,6 @@ class ComMod {
 
     /// @brief Number of URIS surfaces (uninitialized, to be set later)
     int nUris;
-
-    /// @brief URIS resistance
-    double urisRes;
-
-    /// @brief URIS resistance when the valve is closed
-    double urisResClose;
 
     /// @brief Whether to use precomputed state-variable solutions
     bool usePrecomp = false;
