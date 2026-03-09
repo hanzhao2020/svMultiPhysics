@@ -233,13 +233,47 @@ void construct_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const Ar
             }
           }
 
-          if (com_mod.uris[iUris].clsFlg) {
-            sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
-            ris_resistance = com_mod.uris[iUris].resistance_close;
+          // if (com_mod.uris[iUris].clsFlg) {
+          //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+          //   ris_resistance = com_mod.uris[iUris].resistance_close;
+          // } else {
+          //   sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+          //   ris_resistance = com_mod.uris[iUris].resistance;
+          // }
+
+          if (com_mod.uris[iUris].clsFlg){
+            // sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+            // ris_resistance = com_mod.uris[iUris].resistance_close;
+            if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxClose.nrows()) {
+              // Linear interpolation: sdf_deps -> sdf_deps_close over DxClose.nrows() steps
+              double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
+                                static_cast<double>(com_mod.uris[iUris].DxClose.nrows());
+              sdf_deps_temp = com_mod.uris[iUris].sdf_deps + progress 
+                            * (com_mod.uris[iUris].sdf_deps_close - com_mod.uris[iUris].sdf_deps);
+              ris_resistance = com_mod.uris[iUris].resistance + progress 
+                             * (com_mod.uris[iUris].resistance_close - com_mod.uris[iUris].resistance);
+            } else {
+              sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close;
+              ris_resistance = com_mod.uris[iUris].resistance_close;
+            }
           } else {
-            sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
-            ris_resistance = com_mod.uris[iUris].resistance;
+            // sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+            // ris_resistance = com_mod.uris[iUris].resistance;
+            if (com_mod.uris[iUris].cnt < com_mod.uris[iUris].DxOpen.nrows()) {
+              // Linear interpolation: sdf_deps_close -> sdf_deps over DxOpen.nrows() steps
+              double progress = static_cast<double>(com_mod.uris[iUris].cnt) / 
+                                static_cast<double>(com_mod.uris[iUris].DxOpen.nrows());
+              sdf_deps_temp = com_mod.uris[iUris].sdf_deps_close + progress 
+                            * (com_mod.uris[iUris].sdf_deps - com_mod.uris[iUris].sdf_deps_close);
+              ris_resistance = com_mod.uris[iUris].resistance_close + progress 
+                             * (com_mod.uris[iUris].resistance - com_mod.uris[iUris].resistance_close);
+            } else {
+              sdf_deps_temp = com_mod.uris[iUris].sdf_deps;
+              ris_resistance = com_mod.uris[iUris].resistance;
+            }
           }
+
+
           if (distSrf(iUris) <= sdf_deps_temp) {
             DDirTmp = (1 + cos(pi*distSrf(iUris)/sdf_deps_temp))/
                       (2*sdf_deps_temp*sdf_deps_temp);
