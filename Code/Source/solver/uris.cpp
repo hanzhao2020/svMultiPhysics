@@ -892,6 +892,8 @@ void uris_calc_sdf(ComMod& com_mod) {
   dmsg.banner();
   #endif
 
+  using namespace consts;
+
   auto& cm = com_mod.cm;
   auto& uris = com_mod.uris;
   const int nsd = com_mod.nsd;
@@ -978,101 +980,118 @@ void uris_calc_sdf(ComMod& com_mod) {
       for (int i = 0; i < nsd; i++) {
         xp(i) = com_mod.x(i,ca);
       }
-      // Is the node inside the BBox?
-      bool inside = true;
-      for (int i = 0; i < nsd; i++) {
-        if (xp(i) < (minb(i) - extra(i)) || xp(i) > (maxb(i) + extra(i))) {
-          inside = false;
+      // Check whether the node lies inside the expanded bounding box
+      bool inside_bbox = true;
+      for (int i = 0; i < nsd; ++i) {
+        const double lower = minb(i) - extra(i);
+        const double upper = maxb(i) + extra(i);
+        if (xp(i) < lower || xp(i) > upper) {
+          inside_bbox = false;
           break;
         }
       }
-      if (inside) {
-        // This point is inside the BBox
-        // Find the closest URIS face centroid
-        int Ec = -1;
-        int jM = -1;
-        Vector<double> xb(nsd);
-        for (int iM = 0; iM < uris_obj.nFa; iM++) {
-          auto& mesh = uris_obj.msh[iM];
-          for (int e = 0; e < mesh.nEl; e++) {
-            xb = 0.0;
-            for (int a = 0; a < mesh.eNoN; a++) {
-              int Ac = mesh.IEN(a,e);
-              for (int i = 0; i < nsd; i++) {
-                xb(i) += uris_obj.x(i,Ac);
-              }
-            }
-            for (int i = 0; i < nsd; i++) {
-              xb(i) /= static_cast<double>(mesh.eNoN);
-            }
-            double dS = 0.0;
-            for (int i = 0; i < nsd; i++) {
-              dS += (xp[i] - xb[i]) * (xp[i] - xb[i]);
-            }
-            dS = std::sqrt(dS);
-
-            if (dS < minS) {
-              minS = dS;
-              Ec = e;
-              jM = iM;
-            }
-          }
-        }
-
-        // We also need to compute the sign (above or below the valve).
-        // Compute the element normal
-        auto& mesh = uris_obj.msh[jM];
-        xXi = 0.0;
-        lX = 0.0;
-        xb = 0.0;
-        for (int a = 0; a < mesh.eNoN; a++) {
-          int Ac = mesh.IEN(a,Ec);
-          for (int i = 0; i < nsd; i++) {
-            xb(i) += uris_obj.x(i,Ac);
-            lX(i,a) = uris_obj.x(i,Ac);
-          }
-        }
-        for (int i = 0; i < nsd; i++) {
-          xb(i) /= static_cast<double>(mesh.eNoN);
-        }
-
-        for (int a = 0; a < mesh.eNoN; a++) {
-          for (int i = 0; i < nsd - 1; i++) {
-            double factor = mesh.Nx(i,a,0);
-            for (int j = 0; j < nsd; j++)
-                xXi(j,i) += lX(j,a) * factor;
-          }
-        }
-
-        auto nV = utils::cross(xXi);
-        auto Jac = sqrt(utils::norm(nV));
-        nV = nV / Jac;
-        auto dotP = utils::norm(xp-xb, nV);
-
-        // if (dotP < 0.0) {
-        //   dotP = -1.0;
-        // } else {
-        //   dotP = 1.0;
-        // }
-
-        // [HZ] Improved implementation for SDF sign
-        if (uris_obj.clsFlg) {
-          auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
-          if (dot_nrm < 0.0 && dotP < 0.0) {
-            dotP = -1.0;
-          } else {
-            dotP = 1.0;
-          }
-        } else {
-          if (dotP < 0.0) {
-            dotP = -1.0;
-          } else {
-            dotP = 1.0;
-          }
-        }
-
-        uris_obj.sdf[ca] = dotP * minS;
+      if (!inside_bbox) {
+        continue;
       }
+
+      // Only compute SDF for nodes that belong to a fluid related domain
+      bool is_fluid_domain = false;
+      for (int iEq = 0; iEq < com_mod.nEq; ++iEq) {
+        const auto& eq = com_mod.eq[iEq];
+        if (all_fun::is_domain(com_mod, eq, ca, Equation_fluid) ||
+            all_fun::is_domain(com_mod, eq, ca, Equation_CMM) ||
+            all_fun::is_domain(com_mod, eq, ca, Equation_stokes)) {
+          is_fluid_domain = true;
+          break;
+        }
+      }
+      if (!is_fluid_domain) {
+        continue;
+      }
+
+      // This point is in the fluid domain and inside the BBox
+      // Find the closest URIS face centroid
+      int Ec = -1;
+      int jM = -1;
+      Vector<double> xb(nsd);
+      for (int iM = 0; iM < uris_obj.nFa; iM++) {
+        auto& mesh = uris_obj.msh[iM];
+        for (int e = 0; e < mesh.nEl; e++) {
+          xb = 0.0;
+          for (int a = 0; a < mesh.eNoN; a++) {
+            int Ac = mesh.IEN(a,e);
+            for (int i = 0; i < nsd; i++) {
+              xb(i) += uris_obj.x(i,Ac);
+            }
+          }
+          for (int i = 0; i < nsd; i++) {
+            xb(i) /= static_cast<double>(mesh.eNoN);
+          }
+          double dS = 0.0;
+          for (int i = 0; i < nsd; i++) {
+            dS += (xp[i] - xb[i]) * (xp[i] - xb[i]);
+          }
+          dS = std::sqrt(dS);
+
+          if (dS < minS) {
+            minS = dS;
+            Ec = e;
+            jM = iM;
+          }
+        }
+      }
+
+      // We also need to compute the sign (above or below the valve).
+      // Compute the element normal
+      auto& mesh = uris_obj.msh[jM];
+      xXi = 0.0;
+      lX = 0.0;
+      xb = 0.0;
+      for (int a = 0; a < mesh.eNoN; a++) {
+        int Ac = mesh.IEN(a,Ec);
+        for (int i = 0; i < nsd; i++) {
+          xb(i) += uris_obj.x(i,Ac);
+          lX(i,a) = uris_obj.x(i,Ac);
+        }
+      }
+      for (int i = 0; i < nsd; i++) {
+        xb(i) /= static_cast<double>(mesh.eNoN);
+      }
+
+      for (int a = 0; a < mesh.eNoN; a++) {
+        for (int i = 0; i < nsd - 1; i++) {
+          double factor = mesh.Nx(i,a,0);
+          for (int j = 0; j < nsd; j++)
+              xXi(j,i) += lX(j,a) * factor;
+        }
+      }
+
+      auto nV = utils::cross(xXi);
+      auto Jac = sqrt(utils::norm(nV));
+      nV = nV / Jac;
+      auto dotP = utils::norm(xp-xb, nV);
+
+      // Improved implementation for SDF sign. For closed state, sign is less 
+      // sensitive to local face normal orientation inconsistency and more 
+      // aligned with the intended physical flow direction
+      double sdf_sign = 1.0;
+      if (uris_obj.clsFlg) {
+        auto dot_nrm = utils::norm(xp-xb, uris_obj.nrm);
+        if (dot_nrm < 0.0 && dotP < 0.0) {
+          sdf_sign = -1.0;
+        } else {
+          sdf_sign = 1.0;
+        }
+      } else {
+        if (dotP < 0.0) {
+          sdf_sign = -1.0;
+        } else {
+          sdf_sign = 1.0;
+        }
+      }
+
+      uris_obj.sdf[ca] = sdf_sign * minS;
+
     }
   }
 }
