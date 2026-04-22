@@ -1391,6 +1391,7 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
   lEq.maxItr = eq_params->max_iterations.value();
   lEq.tol = eq_params->tolerance.value();
   lEq.expl_geom_cpl = eq_params->explicit_geometric_coupling.value();
+  lEq.expl_geom_cpl = eq_params->explicit_geometric_coupling.value();
 
   // Initialize coupled BC.
   //
