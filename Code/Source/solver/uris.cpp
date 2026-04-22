@@ -302,9 +302,9 @@ void uris_update_disp(ComMod& com_mod, CmMod& cm_mod) {
       for (int a = 0; a < mesh.eNoN; a++) {
         int Ac = mesh.IEN(a, iEln);
         //We have to use Do because Dn contains the result coming from the solid 
-        d(0) += N(a)*com_mod.Do(nsd+1, Ac);
-        d(1) += N(a)*com_mod.Do(nsd+2, Ac);
-        d(2) += N(a)*com_mod.Do(nsd+3, Ac);
+        d(0) += N(a)*com_mod.Dn(nsd+1, Ac);
+        d(1) += N(a)*com_mod.Dn(nsd+2, Ac);
+        d(2) += N(a)*com_mod.Dn(nsd+3, Ac);
       }
       // update uris disp  
       localYd.set_col(nd, d);
