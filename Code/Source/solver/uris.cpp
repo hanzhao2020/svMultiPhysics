@@ -463,19 +463,19 @@ std::vector<char> uris_build_fluid_node_mask(ComMod& com_mod)
 {
   using namespace consts;
 
-  std::vector<char> in_fluid_doamin(com_mod.tnNo, 0);
+  std::vector<char> in_fluid_domain(com_mod.tnNo, 0);
   for (int a = 0; a < com_mod.tnNo; ++a) {
     for (int iEq = 0; iEq < com_mod.nEq; ++iEq) {
       const auto& eq = com_mod.eq[iEq];
       if (all_fun::is_domain(com_mod, eq, a, Equation_fluid) ||
           all_fun::is_domain(com_mod, eq, a, Equation_CMM) ||
           all_fun::is_domain(com_mod, eq, a, Equation_stokes)) {
-        in_fluid_doamin[a] = 1;
+        in_fluid_domain[a] = 1;
         break;
       }
     }
   }
-  return in_fluid_doamin;
+  return in_fluid_domain;
 }
 
 /// @brief Read the URIS mesh separately 
