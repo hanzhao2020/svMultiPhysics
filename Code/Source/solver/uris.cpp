@@ -1163,12 +1163,12 @@ void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<doub
     for (int e = 0; e < mesh.nEl; e++) {
       xb = 0.0;
       for (int a = 0; a < mesh.eNoN; a++) {
-        int Ac = mesh.IEN(a,e);
+        const int Ac = mesh.IEN(a,e);
         xb = xb + uris_obj.x.rcol(Ac);
       }
       xb = xb / mesh.eNoN;
 
-      double dS = std::sqrt((xp - xb) * (xp - xb));
+      const double dS = std::sqrt((xp - xb) * (xp - xb));
 
       if (dS < minS) {
         minS = dS;
