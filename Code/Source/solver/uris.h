@@ -43,7 +43,7 @@ double uris_compute_face_dotp(const urisType& uris_obj, const int nsd, const int
 double uris_compute_sdf_sign(const urisType& uris_obj, const Vector<double>& xp,
   const Vector<double>& xb, const double dotP);
 
-std::vector<char> uris_build_fluid_node_mask(ComMod& com_mod);
+void uris_build_fluid_node_mask(ComMod& com_mod);
 
 }
 

@@ -459,23 +459,21 @@ void inside_tet(ComMod& com_mod, int& eNoN, Vector<double>& xp,
 }
 
 /// @brief Precompute whether each node belongs to a fluid-related domain.
-std::vector<char> uris_build_fluid_node_mask(ComMod& com_mod)
-{
+void uris_build_fluid_node_mask(ComMod& com_mod) {
   using namespace consts;
 
-  std::vector<char> in_fluid_domain(com_mod.tnNo, 0);
+  com_mod.urisFluidNodeMask.resize(com_mod.tnNo, 0);
   for (int a = 0; a < com_mod.tnNo; ++a) {
     for (int iEq = 0; iEq < com_mod.nEq; ++iEq) {
       const auto& eq = com_mod.eq[iEq];
       if (all_fun::is_domain(com_mod, eq, a, Equation_fluid) ||
           all_fun::is_domain(com_mod, eq, a, Equation_CMM) ||
           all_fun::is_domain(com_mod, eq, a, Equation_stokes)) {
-        in_fluid_domain[a] = 1;
+        com_mod.urisFluidNodeMask[a] = 1;
         break;
       }
     }
   }
-  return in_fluid_domain;
 }
 
 /// @brief Read the URIS mesh separately 
@@ -878,7 +876,7 @@ void uris_write_vtus(ComMod& com_mod) {
 void uris_calc_sdf(ComMod& com_mod) {
   #define n_debug_uris_calc_sdf 
   #ifdef debug_uris_calc_sdf
-  DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
+  DebugMsg dmsg(__func__, com_mod.cm.idcm());
   dmsg.banner();
   #endif
 
@@ -889,8 +887,9 @@ void uris_calc_sdf(ComMod& com_mod) {
   const int nsd = com_mod.nsd;
   const int nUris = com_mod.nUris;
 
-  // Build once per SDF recompute call.
-  const auto fluid_node_mask = uris_build_fluid_node_mask(com_mod);
+  if (com_mod.urisFluidNodeMask.size() != static_cast<size_t>(com_mod.tnNo)) {
+    uris_build_fluid_node_mask(com_mod);
+  }
 
   Array<double> xXi(nsd, nsd-1);
 
@@ -914,7 +913,6 @@ void uris_calc_sdf(ComMod& com_mod) {
       }
     }
     
-    // if (uris_obj.sdf.allocated() && cnt < uris_obj.cnt) {continue;}
     if (uris_obj.sdf.size() > 0 && cnt < uris_obj.cnt) {continue;}
 
     int max_eNoN = 0;
@@ -926,7 +924,6 @@ void uris_calc_sdf(ComMod& com_mod) {
     }
 
     Array<double> lX(nsd, max_eNoN);
-    // if (!uris_obj.sdf.allocated()) {
     if (uris_obj.sdf.size() <= 0) {
       uris_obj.sdf.resize(com_mod.tnNo);
       uris_obj.sdf = 0.0;
@@ -985,7 +982,7 @@ void uris_calc_sdf(ComMod& com_mod) {
         continue;
       }
 
-      if (!fluid_node_mask[ca]) {
+      if (!com_mod.urisFluidNodeMask[ca]) {
         continue;
       }
 
@@ -1113,9 +1110,9 @@ int in_poly(Vector<double>& P, Array<double>& P1, bool ext) {
 /// @brief Chech if a point is on the same side of anotehr point wrt a triangle in 3D
 int same_side(Vector<double>& v1, Vector<double>& v2, Vector<double>& v3,
               Vector<double>& v4, Vector<double>& p, bool ext) {
-  #define n_dbg_read_sv
-  #ifdef dbg_read_sv
-    DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
+  #define n_dbg_same_side
+  #ifdef dbg_same_side
+    DebugMsg dmsg(__func__, 0);
     dmsg.banner();
     dmsg << "checking same side";
   #endif
@@ -1155,7 +1152,7 @@ void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<doub
                                      const int nsd, double& minS, int& Ec, int& jM) {
   #define n_dbg_uris_find_closest_face_centroid
   #ifdef dbg_uris_find_closest_face_centroid
-    DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
+    DebugMsg dmsg(__func__, 0);
     dmsg.banner();
     dmsg << "finding closest face centroid";
   #endif
@@ -1188,7 +1185,7 @@ double uris_compute_face_dotp(const urisType& uris_obj, const int nsd, const int
                               Array<double>& lX, Vector<double>& xb) {
   #define n_dbg_uris_compute_face_dotp
   #ifdef dbg_uris_compute_face_dotp
-    DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
+    DebugMsg dmsg(__func__, 0);
     dmsg.banner();
     dmsg << "computing face dot product";
   #endif
@@ -1222,7 +1219,7 @@ double uris_compute_sdf_sign(const urisType& uris_obj, const Vector<double>& xp,
   const Vector<double>& xb, const double dotP) {
   #define n_dbg_uris_compute_sdf_sign
   #ifdef dbg_uris_compute_sdf_sign
-    DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
+    DebugMsg dmsg(__func__, 0);
     dmsg.banner();
     dmsg << "computing SDF sign";
   #endif
