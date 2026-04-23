@@ -1610,7 +1610,7 @@ class ComMod {
 
     /// @brief Fluid-related node mask for URIS SDF. Built once when
     /// consistent with tnNo; rebuilt automatically if tnNo changes.
-    std::vector<char> urisFluidNodeMask;
+    std::vector<bool> urisFluidNodeMask;
 
     /// @brief Whether to use precomputed state-variable solutions
     bool usePrecomp = false;
