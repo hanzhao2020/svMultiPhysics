@@ -43,16 +43,25 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
 
   // Now we can compute the pressure mean on each subdomain
   // We need to have a sdf array for each mesh
-  double Deps = uris_obj.sdf_deps * 2.5;
+  // Set the limit of the upstream and downstream regions to either 5 times the
+  // closed valve thickness or half the default SDF distance, whichever is smaller.
+  // This should give a reasonable range for the upstream and downstream regions.
+  double Deps = std::min(uris_obj.sdf_default * 0.5, uris_obj.sdf_deps_close * 5.0);
+
   double volU = 0.0;
   double volD = 0.0;
 
-  // Let's compute left side 
-  Array<double> sUPS(1,com_mod.tnNo);
+  if (cm.mas(cm_mod)) {
+    std::cout << "Computing upstream region from SDF -" << Deps << " to -" << uris_obj.sdf_deps_close << " for: " << uris_obj.name << std::endl;
+    std::cout << "Computing downstream region from SDF " << uris_obj.sdf_deps_close << " to " << Deps << " for: " << uris_obj.name << std::endl;
+  }
 
+  // Upstream: negative sdf side (opposite to valve normal), outside resistance region
+  Array<double> sUPS(1,com_mod.tnNo);
   sUPS = 0.0;
   for (size_t j = 0; j < sUPS.size(); j++) {
-    if (uris_obj.sdf(j) >= 0.0 && uris_obj.sdf(j) <= Deps) {
+    double sdf_j = uris_obj.sdf(j);
+    if (sdf_j >= -Deps && sdf_j <= -uris_obj.sdf_deps_close) {
         sUPS(0,j) = 1.0;
     }
   }
@@ -61,11 +70,12 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
     volU += all_fun::integ(com_mod, cm_mod, iM, sUPS);
   }
 
-  // Let's compute right side
+  // Downstream: positive sdf side (valve normal direction), outside resistance region
   Array<double> sDST(1,com_mod.tnNo);
   sDST = 0.0;
   for (size_t j = 0; j < sDST.size(); j++) {
-    if (uris_obj.sdf(j) < 0.0 && uris_obj.sdf(j) >= -Deps) {
+    double sdf_j = uris_obj.sdf(j);
+    if (sdf_j >= uris_obj.sdf_deps_close && sdf_j <= Deps) {
         sDST(0,j) = 1.0;
     }
   } 
@@ -119,7 +129,7 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris) {
   //  If the uris has passed the closing state
   if (uris_obj.cnt > uris_obj.transition_state_lock_multiplier*uris_obj.DxClose.nrows() 
       && com_mod.cTS*com_mod.dt > uris_obj.pressurization_time) {
-    if (uris_obj.meanPD > uris_obj.meanPU) {
+    if (uris_obj.meanPU > uris_obj.meanPD) {
       uris_obj.cnt = 1;
       uris_obj.clsFlg = false;
       com_mod.urisActFlag = true;
@@ -292,9 +302,9 @@ void uris_update_disp(ComMod& com_mod, CmMod& cm_mod) {
       for (int a = 0; a < mesh.eNoN; a++) {
         int Ac = mesh.IEN(a, iEln);
         //We have to use Do because Dn contains the result coming from the solid 
-        d(0) += N(a)*com_mod.Do(nsd+1, Ac);
-        d(1) += N(a)*com_mod.Do(nsd+2, Ac);
-        d(2) += N(a)*com_mod.Do(nsd+3, Ac);
+        d(0) += N(a)*com_mod.Dn(nsd+1, Ac);
+        d(1) += N(a)*com_mod.Dn(nsd+2, Ac);
+        d(2) += N(a)*com_mod.Dn(nsd+3, Ac);
       }
       // update uris disp  
       localYd.set_col(nd, d);
@@ -1013,6 +1023,20 @@ void uris_calc_sdf(ComMod& com_mod) {
         }
       }
       if (inside) {
+        // Only compute SDF for nodes in the fluid domain
+        bool in_fluid = false;
+        for (int iEq = 0; iEq < com_mod.nEq; iEq++) {
+          if (all_fun::is_domain(com_mod, com_mod.eq[iEq], ca, Equation_fluid) ||
+              all_fun::is_domain(com_mod, com_mod.eq[iEq], ca, Equation_CMM) ||
+              all_fun::is_domain(com_mod, com_mod.eq[iEq], ca, Equation_stokes)) {
+            in_fluid = true;
+            break;
+          }
+        }
+        if (!in_fluid) {
+          continue;
+        }
+
         // This point is inside the BBox
         // Find the closest URIS face centroid
         int Ec = -1;
