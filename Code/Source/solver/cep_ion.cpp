@@ -3,6 +3,7 @@
 
 #include "cep_ion.h"
 
+#include "FE/Common/FEException.h"
 #include "all_fun.h"
 #include "post.h"
 #include "utils.h"
@@ -57,12 +58,11 @@ void cep_init(Simulation* simulation)
           }
           int nX = eq.dmn[iDmn].cep.nX;
           int nG = eq.dmn[iDmn].cep.nG;
-          int imyo = eq.dmn[iDmn].cep.imyo;
 
           Vector<double> Xl(nX); 
           Vector<double> Xgl(nG);
 
-          cep_init_l(eq.dmn[iDmn].cep, nX, nG, Xl, Xgl);
+          eq.dmn[iDmn].cep.ionic_model->init(Xl, Xgl);
 
           sA(a) = sA(a) + 1.0;
 
@@ -97,7 +97,7 @@ void cep_init(Simulation* simulation)
         Vector<double> Xl(nX); 
         Vector<double> Xgl(nG);
 
-        cep_init_l(eq.dmn[0].cep, nX, nG, Xl, Xgl);
+        eq.dmn[0].cep.ionic_model->init(Xl, Xgl);
 
         for (int i = 0; i < nX; i++) {
           cep_mod.Xion(i,a) = Xl(i);
@@ -107,32 +107,6 @@ void cep_init(Simulation* simulation)
         }
       }
     }
-  }
-}
-
-//------------
-// cep_init_l
-//------------
-//
-void cep_init_l(cepModelType& cep, int nX, int nG, Vector<double>& X, Vector<double>& Xg)
-{
-  switch (cep.cepType) {
-
-    case ElectrophysiologyModelType::AP:
-      cep.ap.init(nX, X);
-    break;
-
-    case ElectrophysiologyModelType::BO:
-      cep.bo.init(nX, X);
-    break;
-
-    case ElectrophysiologyModelType::FN:
-      cep.fn.init(nX, X);
-    break;
-
-    case ElectrophysiologyModelType::TTP:
-      cep.ttp.init(nX, nG, X, Xg);
-    break;
   }
 }
 
@@ -247,7 +221,7 @@ void cep_integ(Simulation* simulation, const int iEq, const int iDof, SolutionSt
           yl = cem.Ya(Ac);
         }
 
-        cep_integ_l(cep_mod, dmn.cep, nX, nG, Xl, Xgl, time-dt, yl, I4f(Ac), dt);
+        cep_integ_l(cep_mod, dmn.cep, Xl, Xgl, time - dt, yl, I4f(Ac), dt);
 
         sA(Ac) = sA(Ac) + 1.0;
         for (int i = 0; i < nX; i++) {
@@ -296,7 +270,7 @@ void cep_integ(Simulation* simulation, const int iEq, const int iDof, SolutionSt
         yl = cem.Ya(Ac);
       }
 
-      cep_integ_l(cep_mod, eq.dmn[0].cep, nX, nG, Xl, Xgl, time-dt, yl, I4f(Ac), dt);
+      cep_integ_l(cep_mod, eq.dmn[0].cep, Xl, Xgl, time - dt, yl, I4f(Ac), dt);
 
       for (int i = 0; i < nX; i++) {
         Xion(i,Ac) = Xl(i);
@@ -324,9 +298,9 @@ void cep_integ(Simulation* simulation, const int iEq, const int iDof, SolutionSt
 // integrate excitation-activation variables form coupled electro-
 // mechanics. The equations are integrated at domain nodes.
 //
-void cep_integ_l(CepMod& cep_mod, cepModelType& cep, int nX, int nG, Vector<double>& X, Vector<double>& Xg, 
-    const double t1, double& yl, const double I4f, const double dt)
-{
+void cep_integ_l(CepMod &cep_mod, cepModelType &cep, Vector<double> &X,
+                 Vector<double> &Xg, const double t1, double &yl,
+                 const double I4f, const double dt) {
   using namespace consts;
 
   #define n_debug_cep_integ_l
@@ -335,24 +309,16 @@ void cep_integ_l(CepMod& cep_mod, cepModelType& cep, int nX, int nG, Vector<doub
   dmsg.banner();
   #endif
 
-  auto& cem = cep_mod.cem;
-
   // Feedback coefficient for stretch-activated-currents
-  double Ksac = 0.0;
-  if (I4f > 1.0) {
-     Ksac = cep.Ksac * (sqrt(I4f) - 1.0);
-  } else {
-     Ksac = 0.0;
-  }
+  const double Ksac = I4f > 1.0 ? cep.Ksac * (sqrt(I4f) - 1.0) : 0.0;
 
   // Total time steps
-  int nt = static_cast<int>(dt/cep.dt);
+  const unsigned nt = static_cast<unsigned int>(dt / cep.dt);
 
   // External stimulus duration
-  int icl = static_cast<int>(fmax(floor(t1/cep.Istim.CL),0.0));
-  double Ts = cep.Istim.Ts + static_cast<double>(icl)*cep.Istim.CL;
-  double Te = Ts + cep.Istim.Td;
-  double eps = std::numeric_limits<double>::epsilon();
+  const int icl = static_cast<int>(fmax(floor(t1 / cep.Istim.CL), 0.0));
+  const double Ts = cep.Istim.Ts + static_cast<double>(icl) * cep.Istim.CL;
+  const double Te = Ts + cep.Istim.Td;
 
   #ifdef debug_cep_integ_l
   dmsg << "nt: " << nt;
@@ -364,284 +330,20 @@ void cep_integ_l(CepMod& cep_mod, cepModelType& cep, int nX, int nG, Vector<doub
   dmsg << "cep.odes.tIntTyp: " << cep.odes.tIntType;
   #endif
 
-  switch (cep.cepType) {
-    case ElectrophysiologyModelType::AP: {
-      Vector<int> IPAR(2); 
-      Vector<double> RPAR(2);
-      IPAR(0) = cep.odes.maxItr;
-      IPAR(1) = 0;
-      RPAR(0) = cep.odes.absTol;
-      RPAR(1) = cep.odes.relTol;
+  svmp::check_not_null<svmp::FE::NotInitializedException>(
+      cep.ionic_model, SVMP_HERE, "ionic model was not constructed.");
 
-      switch (cep.odes.tIntType) {
-        case TimeIntegratioType::FE: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-            cep.ap.integ_fe(nX, X, t, cep.dt, Istim, Ksac);
-  
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.ap.actv_strs(X(0), cep.dt, yl, epsX);
-            }
-          }
-        } break; 
+  const double eps = std::numeric_limits<double>::epsilon();
 
-        case TimeIntegratioType::RK4: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-            cep.ap.integ_rk(nX, X, t, cep.dt, Istim, Ksac);
+  for (unsigned int i = 0; i < nt; ++i) {
+    const double t = t1 + i * dt;
+    const double Istim = (Ts - eps <= t && t <= Te + eps) ? cep.Istim.A : 0.0;
 
-            //  Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.ap.actv_strs(X(0), cep.dt, yl, epsX);
-            }
-          }
-        } break; 
-
-        case TimeIntegratioType::CN2: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-
-            cep.ap.integ_cn2(nX, X, t, cep.dt, Istim, Ksac, IPAR, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.ap.actv_strs(X(0), cep.dt, yl, epsX);
-            }
-          }
-        } break; 
-      } 
-    } break; 
-
-    case ElectrophysiologyModelType::BO: {
-      Vector<int> IPAR(2); 
-      Vector<double> RPAR(5);
-      IPAR(0) = cep.odes.maxItr;
-      IPAR(1) = 0.0;
-      RPAR(0) = cep.odes.absTol;
-      RPAR(1) = cep.odes.relTol;
-
-      switch (cep.odes.tIntType) {
-        case TimeIntegratioType::FE: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-
-            cep.bo.integ_fe(cep.imyo, nX, X, t, cep.dt, Istim, Ksac, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.bo.actv_strs(X(0), cep.dt, yl, epsX);
-            } else if (cem.aStrain) {
-              cep.bo.actv_strn(X(3), I4f, cep.dt, yl);
-            }
-          }
-        } break;
-
-        case TimeIntegratioType::RK4: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-
-            cep.bo.integ_rk(cep.imyo, nX, X, t, cep.dt, Istim, Ksac, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.bo.actv_strs(X(0), cep.dt, yl, epsX);
-            } else if (cem.aStrain) {
-              cep.bo.actv_strn(X(3), I4f, cep.dt, yl);
-            }
-          }
-        } break;
-
-        case TimeIntegratioType::CN2: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-
-            cep.bo.integ_cn2(cep.imyo, nX, X, t, cep.dt, Istim, Ksac, IPAR, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.bo.actv_strs(X(0), cep.dt, yl, epsX);
-            } else if (cem.aStrain) {
-              cep.bo.actv_strn(X(3), I4f, cep.dt, yl);
-            }
-          }
-        } break;
-      } 
-    } break; 
-
-    case ElectrophysiologyModelType::FN: {
-      Vector<int> IPAR(2); 
-      Vector<double> RPAR(2);
-      IPAR(0) = cep.odes.maxItr;
-      IPAR(0) = cep.odes.maxItr;
-      IPAR(1) = 0;
-      RPAR(0) = cep.odes.absTol;
-      RPAR(1) = cep.odes.relTol;
-
-      switch (cep.odes.tIntType) {
-        case TimeIntegratioType::FE: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-            cep.fn.integ_fe(nX, X, t, cep.dt, Istim);
-          }
-        } break;
-
-        case TimeIntegratioType::RK4: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-            cep.fn.integ_rk(nX, X, t, cep.dt, Istim);
-          }
-        } break;
-
-        case TimeIntegratioType::CN2: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-            cep.fn.integ_cn2(nX, X, t, cep.dt, Istim, IPAR, RPAR);
-           }
-        } break;
-      }
-    } break; 
-
-    case ElectrophysiologyModelType::TTP: {
-      Vector<int> IPAR(2); 
-      Vector<double> RPAR(18);
-      IPAR(0) = cep.odes.maxItr;
-      IPAR(1) = 0;
-      RPAR(0) = cep.odes.absTol;
-      RPAR(1) = cep.odes.relTol;
-
-      switch (cep.odes.tIntType) {
-        case TimeIntegratioType::FE: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-            cep.ttp.integ_fe(cep.imyo, nX, nG, X, Xg, t, cep.dt, Istim, Ksac, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.ttp.actv_strs(X(3), cep.dt, yl, epsX);
-            } else if (cem.aStrain) {
-              cep.ttp.actv_strn(X(3), I4f, cep.dt, yl);
-            }
-          }
-        } break;
-
-        case TimeIntegratioType::RK4: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-
-            cep.ttp.integ_rk(cep.imyo, nX, nG, X, Xg, t, cep.dt, Istim, Ksac, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.ttp.actv_strs(X(3), cep.dt, yl, epsX);
-            } else if (cem.aStrain) {
-              cep.ttp.actv_strn(X(3), I4f, cep.dt, yl);
-            }
-          }
-        } break;
-
-        case TimeIntegratioType::CN2: {
-          for (int i = 0; i < nt; i++) {
-            double t = t1 + static_cast<double>(i) * cep.dt;
-            double Istim;
-            if (t >= Ts-eps &&  t <= Te+eps) {
-              Istim = cep.Istim.A;
-            } else {
-              Istim = 0.0;
-            }
-
-            cep.ttp.integ_cn2(cep.imyo, nX, nG, X, Xg, t, cep.dt, Istim, Ksac, IPAR, RPAR);
-
-            // Electromechanics excitation-activation
-            if (cem.aStress) {
-              double epsX;
-              cep.ttp.actv_strs(X(3), cep.dt, yl, epsX);
-            } else if (cem.aStrain) {
-              cep.ttp.actv_strn(X(3), I4f, cep.dt, yl);
-            }
-          }
-        } break;
-      }
-    } break; 
-  } 
+    cep.ionic_model->integ(cep.odes, cep.imyo, t, cep.dt, Istim, Ksac, X, Xg);
+  }
 
   if (isnan(X(0)) ||  isnan(yl)) {
     throw std::runtime_error("[cep_integ_l] A NaN has been computed during time integration of electrophysiology variables.");
   }
 }
-
 }

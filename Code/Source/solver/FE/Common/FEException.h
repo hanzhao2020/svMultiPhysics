@@ -200,6 +200,21 @@ public:
     }
 };
 
+class NotInitializedException : public FEException {
+public:
+  NotInitializedException(const std::string &feature,
+                          const char *file,
+                          int line = 0,
+                          const char *function = "")
+      : FEException("Missing initialization: " + feature,
+                    StatusCode::InvalidState,
+                    file,
+                    line,
+                    function)
+  {
+  }
+};
+
 class ConvergenceException : public FEException {
 public:
     ConvergenceException(const std::string& message,
@@ -293,11 +308,10 @@ inline void check_arg(bool condition, SourceLocation location, Args&&... args)
 
 template <class ExceptionT = InvalidArgumentException, class PointerT,
           class... Args>
-inline PointerT* check_not_null(PointerT* ptr, SourceLocation location,
-                                Args&&... args)
+inline void check_not_null(PointerT ptr, SourceLocation location,
+                           Args&&... args)
 {
-    return ::svmp::check_not_null<ExceptionT>(ptr, location,
-                                              std::forward<Args>(args)...);
+    ::svmp::check_not_null<ExceptionT>(ptr, location, std::forward<Args>(args)...);
 }
 
 template <class ExceptionT = InvalidArgumentException, class IndexT,

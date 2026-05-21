@@ -937,8 +937,9 @@ void CANNRowParameters::print_parameters()
 
 void CANNRowParameters::set_values(tinyxml2::XMLElement* row_elem)
 {
-  row_elem = svmp::check_not_null<svmp::ParseException>(
-      row_elem, SVMP_HERE, "CANNRowParameters::set_values: Received null XML element.");
+  svmp::check_not_null<svmp::ParseException>(
+      row_elem, SVMP_HERE,
+      "CANNRowParameters::set_values: Received null XML element.");
 
   using namespace tinyxml2;
 
@@ -1589,6 +1590,147 @@ void SolidViscosityParameters::set_values(tinyxml2::XMLElement* xml_elem)
 }
 
 //////////////////////////////////////////////////////////
+//             IonicInitialStateParameters              //
+//////////////////////////////////////////////////////////
+
+IonicInitialStateParameters::IonicInitialStateParameters(
+    const std::string &xml_element_name_,
+    const std::vector<std::pair<std::string, double>> &states)
+    : xml_element_name(xml_element_name_), required(states.size() > 0) {
+  constexpr bool param_required = true;
+
+  for (const auto &[label, initial_value] : states) {
+    set_parameter(label, initial_value, param_required, parameters[label]);
+  }
+}
+
+void IonicInitialStateParameters::print_parameters() const {
+  if (value_set) {
+    std::cout << xml_element_name << std::endl;
+    for (const auto &[key, value] : get_parameter_list()) {
+      std::cout << "    " << key << ": " << value << std::endl;
+    }
+  }
+}
+
+void IonicInitialStateParameters::set_values(
+    const tinyxml2::XMLElement *xml_elem) {
+  if (xml_elem->Name() != xml_element_name) {
+    svmp::raise<svmp::ParseException>(SVMP_HERE, "Unknown " + xml_element_name +
+                                                     " XML element '");
+  }
+
+  const std::string error_msg_prefix =
+      "Unknown " + xml_element_name + " XML element '";
+
+  for (const tinyxml2::XMLElement *item = xml_elem->FirstChildElement();
+       item != nullptr; item = item->NextSiblingElement()) {
+    const std::string name = item->Value();
+
+    if (item->GetText() != nullptr) {
+      const auto value = item->GetText();
+
+      try {
+        set_parameter_value(name, value);
+        value_set = true;
+      } catch (const std::bad_function_call &exception) {
+        svmp::raise<svmp::ParseException>(SVMP_HERE,
+                                          error_msg_prefix + name + "'.");
+      }
+    } else {
+      svmp::raise<svmp::ParseException>(SVMP_HERE,
+                                        error_msg_prefix + name + "'.");
+    }
+  }
+
+  check_required();
+}
+
+//////////////////////////////////////////////////////////
+//                 IonicModelParameters                 //
+//////////////////////////////////////////////////////////
+
+IonicModelParameters::IonicModelParameters(
+    const std::string &xml_element_name_,
+    const std::vector<std::pair<std::string, double>> &initial_X,
+    const std::vector<std::pair<std::string, double>> &initial_Xg)
+    : xml_element_name(xml_element_name_),
+      initial_X_parameters("Initial_states", initial_X),
+      initial_Xg_parameters("Initial_gating_variables", initial_Xg) {
+  set_xml_element_name(xml_element_name_);
+}
+
+void IonicModelParameters::print_parameters() const {
+  if (value_set) {
+    std::cout << "\n"
+              << xml_element_name << "\n"
+              << "---------------------------------\n";
+
+    if (!parameters.empty()) {
+      std::cout << "Model parameters:" << std::endl;
+      for (const auto &[name, param] : parameters) {
+        std::cout << "  " << name << ": " << param.value() << std::endl;
+      }
+    }
+
+    if (!vector_parameters.empty()) {
+      std::cout << "Vector model parameters:" << std::endl;
+      for (const auto &[name, param] : vector_parameters) {
+        std::cout << "  " << name << ": ";
+        for (const auto &v : param.value()) {
+          std::cout << v << " ";
+        }
+        std::cout << std::endl;
+      }
+    }
+
+    std::cout << "Initial state:" << std::endl;
+    initial_X_parameters.print_parameters();
+
+    std::cout << "Initial gating variables:" << std::endl;
+    initial_Xg_parameters.print_parameters();
+  }
+}
+
+void IonicModelParameters::set_values(const tinyxml2::XMLElement *xml_elem) {
+  using namespace tinyxml2;
+
+  for (const XMLElement *item = xml_elem->FirstChildElement(); item != nullptr;
+       item = item->NextSiblingElement()) {
+    const std::string name = item->Value();
+
+    if (name == initial_X_parameters.xml_element_name) {
+      initial_X_parameters.set_values(item);
+      value_set = true;
+    } else if (name == initial_Xg_parameters.xml_element_name) {
+      initial_Xg_parameters.set_values(item);
+      value_set = true;
+    } else {
+      const std::string text = item->GetText() ? item->GetText() : "";
+      set_parameter_value(name, text);
+      value_set = true;
+    }
+  }
+
+  // The initial values of both state and gating variables must be set.
+  if (initial_X_parameters.required && !initial_X_parameters.defined()) {
+    svmp::raise<svmp::ParseException>(
+        SVMP_HERE, xml_element_name + " requires an '" +
+                       initial_X_parameters.xml_element_name +
+                       "' XML section.");
+  }
+
+  if (initial_Xg_parameters.required && !initial_Xg_parameters.defined()) {
+    svmp::raise<svmp::ParseException>(
+        SVMP_HERE, xml_element_name + " requires an '" +
+                       initial_Xg_parameters.xml_element_name +
+                       "' XML section.");
+  }
+
+  check_required();
+}
+
+//////////////////////////////////////////////////////////
 //                  DomainParameters                    //
 //////////////////////////////////////////////////////////
 
@@ -1635,15 +1777,6 @@ DomainParameters::DomainParameters()
   set_parameter("Momentum_stabilization_coefficient", 0.0, !required, momentum_stabilization_coefficient);
   set_parameter("Myocardial_zone", "epicardium", !required, myocardial_zone);
 
-  set_parameter("G_Na", 14.838, !required, G_Na);
-  set_parameter("G_CaL", 3.98E-5, !required, G_CaL);
-  set_parameter("G_Kr", 0.153, !required, G_Kr);
-  set_parameter("G_Ks", 0.392, !required, G_Ks);
-  set_parameter("G_to", 0.294, !required, G_to);
-
-  set_parameter("tau_fi", 0.110, !required, tau_fi);
-  set_parameter("tau_si", 1.88750, !required, tau_si);
-
   set_parameter("ODE_solver", "euler", !required, ode_solver);
 
   set_parameter("Penalty_parameter", 0.0, !required, penalty_parameter);
@@ -1656,6 +1789,12 @@ DomainParameters::DomainParameters()
   set_parameter("Time_step_for_integration", 0.0, !required, time_step_for_integration);
 
   set_parameter("Inverse_darcy_permeability", 0.0, !required, inverse_darcy_permeability);
+
+  // Ionic model parameters.
+  IonicModelFactory::visit(
+      [this](const std::string &name, const IonicModel &model) {
+        ionic_models.emplace(name, model.get_parameters());
+      });
 }
 
 void DomainParameters::print_parameters()
@@ -1677,12 +1816,13 @@ void DomainParameters::print_parameters()
 
   stimulus.print_parameters();
 
-  ttp_initial_conditions.print_parameters();
+  for (const auto &[cepType, params] : ionic_models) {
+    params->print_parameters();
+  }
 
   fluid_viscosity.print_parameters();
 
   solid_viscosity.print_parameters();
-
 }
 
 //------------
@@ -1711,247 +1851,93 @@ void DomainParameters::set_values(tinyxml2::XMLElement* domain_elem, bool from_e
   //
   while (item != nullptr) {
     auto name = std::string(item->Value());
-  
+    bool item_found = false;
+
     if (name == ConstitutiveModelParameters::xml_element_name_) {
       constitutive_model.set_values(item);
+      item_found = true;
+    }
 
-    } else if (name == FiberReinforcementStressParameters::xml_element_name_) {
+    if (name == FiberReinforcementStressParameters::xml_element_name_) {
       fiber_reinforcement_stress.set_values(item);
+      item_found = true;
+    }
 
-    } else if (name == StimulusParameters::xml_element_name_) {
+    if (name == StimulusParameters::xml_element_name_) {
       stimulus.set_values(item);
+      item_found = true;
+    }
 
-    } else if (name == TTPInitialConditionsParameters::xml_element_name_) {
-      ttp_initial_conditions.set_values(item);
+    for (auto &[label, params] : ionic_models)
+      if (name == params->xml_element_name) {
+        params->set_values(item);
+        item_found = true;
+      }
 
-    } else if (name == FluidViscosityParameters::xml_element_name_ || name == SolidViscosityParameters::xml_element_name_) {
-      auto eq_type = require_map_value(consts::equation_name_to_type, equation.value(),
-          SVMP_HERE, "Unknown equation type '" + equation.value() + "' while parsing viscosity model.");
-      if (eq_type == consts::EquationType::phys_fluid || eq_type == consts::EquationType::phys_CMM || eq_type == consts::EquationType::phys_stokes) {
+    if (name == FluidViscosityParameters::xml_element_name_ ||
+        name == SolidViscosityParameters::xml_element_name_) {
+      auto eq_type = require_map_value(
+          consts::equation_name_to_type, equation.value(), SVMP_HERE,
+          "Unknown equation type '" + equation.value() +
+              "' while parsing viscosity model.");
+      if (eq_type == consts::EquationType::phys_fluid ||
+          eq_type == consts::EquationType::phys_CMM ||
+          eq_type == consts::EquationType::phys_stokes) {
         fluid_viscosity.set_values(item);
-      } else if (eq_type == consts::EquationType::phys_struct || eq_type == consts::EquationType::phys_ustruct) {
+        item_found = true;
+      } else if (eq_type == consts::EquationType::phys_struct ||
+                 eq_type == consts::EquationType::phys_ustruct) {
         solid_viscosity.set_values(item);
+        item_found = true;
+      } else {
+        svmp::raise<svmp::ParseException>(
+            SVMP_HERE, "Viscosity model not supported for equation '" +
+                           equation.value() + "'.");
       }
-      else {
-        svmp::raise<svmp::ParseException>(SVMP_HERE, "Viscosity model not supported for equation '" + equation.value() + "'.");
-      }
+    }
 
-    } else if (name == include_xml.name()) { 
+    if (name == include_xml.name()) {
       auto value = require_xml_text(item, SVMP_HERE,
           "Domain Include_xml requires a file name.");
       IncludeParametersFile include_parameters(value);
       set_values(include_parameters.root_element, true);
-  
-    } else if (item->GetText() != nullptr) {
-      auto value = item->GetText();
-      try {
-        set_parameter_value(name, value);
-      } catch (const std::bad_function_call& exception) {
-        svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
-      }
 
-    } else {
-      svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
+      item_found = true;
     }
-  
-    item = item->NextSiblingElement();
-  }
-
-/*
-
-  // Check values for some parameters..
-  //
-  if (Parameters::constitutive_model_names.count(constitutive_model.value()) == 0) {
-    svmp::raise<svmp::ParseException>(SVMP_HERE, "Unknown constitutive model '" + constitutive_model.value_ + "' for '" + constitutive_model.name_ +
-      "' in '" + domain_params->Name() + "'.");
-  }
-
-  if (Parameters::equation_names.count(equation.value()) == 0) {
-    svmp::raise<svmp::ParseException>(SVMP_HERE, "Unknown equation name '" + equation.value() + "' for '" + equation.name_ +
-      "' in '" + domain_params->Name() + "'.");
-  }
-*/
-}
-
-//////////////////////////////////////////////////////////
-//            TTPInitialConditionsParameters              //
-//////////////////////////////////////////////////////////
-
-const std::string TTPInitialConditionsParameters::xml_element_name_ = "TTP_initial_conditions";
-
-TTPInitialConditionsParameters::TTPInitialConditionsParameters()
-{
-}
-
-void TTPInitialConditionsParameters::print_parameters()
-{
-  if (value_set) {
-    std::cout << std::endl;
-    std::cout << "TTP Initial Conditions Parameters" << std::endl;
-    std::cout << "---------------------------------" << std::endl;
-    initial_states.print_parameters();
-    gating_variables.print_parameters();
-  }
-}
-
-void TTPInitialConditionsParameters::set_values(tinyxml2::XMLElement* xml_elem)
-{
-  using namespace tinyxml2;
-  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '";
-
-  auto item = xml_elem->FirstChildElement();
-
-  while (item != nullptr) {
-    auto name = std::string(item->Value());
-
-    if (name == TTPInitialStatesParameters::xml_element_name_) {
-      initial_states.set_values(item);
-      value_set = true;
-
-    } else if (name == TTPGatingVariablesParameters::xml_element_name_) {
-      gating_variables.set_values(item);
-      value_set = true;
-
-    } else {
-      svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
-    }
-
-    item = item->NextSiblingElement();
-  }
-
-  if (!initial_states.defined()) {
-    svmp::raise<svmp::ParseException>(SVMP_HERE, xml_element_name_ + " requires an '" +
-        TTPInitialStatesParameters::xml_element_name_ + "' XML section.");
-  }
-
-  if (!gating_variables.defined()) {
-    svmp::raise<svmp::ParseException>(SVMP_HERE, xml_element_name_ + " requires a '" +
-        TTPGatingVariablesParameters::xml_element_name_ + "' XML section.");
-  }
-}
-
-//////////////////////////////////////////////////////////
-//            TTPInitialStatesParameters                   //
-//////////////////////////////////////////////////////////
-
-const std::string TTPInitialStatesParameters::xml_element_name_ = "Initial_states";
-
-TTPInitialStatesParameters::TTPInitialStatesParameters()
-{
-  bool required = true;
-
-  set_parameter("V",      -85.23,   required, V);
-  set_parameter("K_i",    136.89,   required, K_i);
-  set_parameter("Na_i",   8.6040,   required, Na_i);
-  set_parameter("Ca_i",   1.26E-4,  required, Ca_i);
-  set_parameter("Ca_ss",  3.6E-4,   required, Ca_ss);
-  set_parameter("Ca_sr",  3.64,     required, Ca_sr);
-  set_parameter("R_bar",  0.9073,   required, R_bar);
-}
-
-void TTPInitialStatesParameters::print_parameters()
-{
-  if (value_set) {
-    std::cout << "  Initial States:" << std::endl;
-    auto params_name_value = get_parameter_list();
-    for (auto& [key, value] : params_name_value) {
-      std::cout << "    " << key << ": " << value << std::endl;
-    }
-  }
-}
-
-void TTPInitialStatesParameters::set_values(tinyxml2::XMLElement* xml_elem)
-{
-  using namespace tinyxml2;
-  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '";
-
-  auto item = xml_elem->FirstChildElement();
-
-  while (item != nullptr) {
-    auto name = std::string(item->Value());
 
     if (item->GetText() != nullptr) {
       auto value = item->GetText();
       try {
         set_parameter_value(name, value);
-        value_set = true;
-      } catch (const std::bad_function_call& exception) {
+        item_found = true;
+      } catch (const std::bad_function_call &exception) {
         svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
       }
-    } else {
-      svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
     }
+
+    if (!item_found)
+      svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
 
     item = item->NextSiblingElement();
   }
 
-  check_required();
-}
+  /*
 
-//////////////////////////////////////////////////////////
-//            TTPGatingVariablesParameters                 //
-//////////////////////////////////////////////////////////
-
-const std::string TTPGatingVariablesParameters::xml_element_name_ = "Gating_variables";
-
-TTPGatingVariablesParameters::TTPGatingVariablesParameters()
-{
-  bool required = true;
-
-  set_parameter("x_r1_rectifier", 6.21E-3,   required, x_r1_rectifier);
-  set_parameter("x_r2_rectifier", 0.4712,    required, x_r2_rectifier);
-  set_parameter("x_s_rectifier",  9.5E-3,    required, x_s_rectifier);
-
-  set_parameter("m_fast_Na",      1.72E-3,   required, m_fast_Na);
-  set_parameter("h_fast_Na",      0.7444,    required, h_fast_Na);
-  set_parameter("j_fast_Na",      0.7045,    required, j_fast_Na);
-
-  set_parameter("d_slow_in",      3.373E-5,  required, d_slow_in);
-  set_parameter("f_slow_in",      0.7888,    required, f_slow_in);
-  set_parameter("f2_slow_in",     0.9755,    required, f2_slow_in);
-  set_parameter("fcass_slow_in",  0.9953,    required, fcass_slow_in);
-
-  set_parameter("s_out",          0.999998,  required, s_out);
-  set_parameter("r_out",          2.42E-8,   required, r_out);
-}
-
-void TTPGatingVariablesParameters::print_parameters()
-{
-  if (value_set) {
-    std::cout << "  Gating Variables:" << std::endl;
-    auto params_name_value = get_parameter_list();
-    for (auto& [key, value] : params_name_value) {
-      std::cout << "    " << key << ": " << value << std::endl;
-    }
-  }
-}
-
-void TTPGatingVariablesParameters::set_values(tinyxml2::XMLElement* xml_elem)
-{
-  using namespace tinyxml2;
-  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '";
-
-  auto item = xml_elem->FirstChildElement();
-
-  while (item != nullptr) {
-    auto name = std::string(item->Value());
-
-    if (item->GetText() != nullptr) {
-      auto value = item->GetText();
-      try {
-        set_parameter_value(name, value);
-        value_set = true;
-      } catch (const std::bad_function_call& exception) {
-        svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
-      }
-    } else {
-      svmp::raise<svmp::ParseException>(SVMP_HERE, error_msg + name + "'.");
+    // Check values for some parameters..
+    //
+    if (Parameters::constitutive_model_names.count(constitutive_model.value())
+    == 0) { svmp::raise<svmp::ParseException>(SVMP_HERE, "Unknown constitutive
+    model '" + constitutive_model.value_ + "' for '" + constitutive_model.name_
+    +
+        "' in '" + domain_params->Name() + "'.");
     }
 
-    item = item->NextSiblingElement();
-  }
-
-  check_required();
+    if (Parameters::equation_names.count(equation.value()) == 0) {
+      svmp::raise<svmp::ParseException>(SVMP_HERE, "Unknown equation name '" +
+    equation.value() + "' for '" + equation.name_ +
+        "' in '" + domain_params->Name() + "'.");
+    }
+  */
 }
 
 //////////////////////////////////////////////////////////

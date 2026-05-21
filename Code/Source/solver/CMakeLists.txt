@@ -213,15 +213,17 @@ set(CSRCS
   uris.h uris.cpp
 
   CepMod.h CepMod.cpp
-  CepModAp.h CepModAp.cpp
-  CepModBo.h CepModBo.cpp
-  CepModFn.h CepModFn.cpp
-  CepModTtp.h CepModTtp.cpp
   ChnlMod.h ChnlMod.cpp
   CmMod.h CmMod.cpp
   ComMod.h ComMod.cpp
   Timer.h
   ArtificialNeuralNetMaterial.h ArtificialNeuralNetMaterial.cpp
+
+  ionic_model.cpp
+  ionic_aliev_panfilov.cpp
+  ionic_bueno_orovio.cpp
+  ionic_fitzhugh_nagumo.cpp
+  ionic_ttp.cpp
   
   SPLIT.c
 

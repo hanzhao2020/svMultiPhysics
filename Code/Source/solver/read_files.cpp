@@ -5,10 +5,12 @@
 
 #include "read_files.h"
 
+#include "FE/Common/FEException.h"
 #include "all_fun.h"
 #include "consts.h"
-#include "read_msh.h"
 #include "fft.h"
+#include "ionic_model.h"
+#include "read_msh.h"
 #include "vtk_xml.h"
 
 #include "Array.h"
@@ -1014,31 +1016,22 @@ void read_cep_domain(Simulation* simulation, EquationParameters* eq_params, Doma
   } catch (const std::out_of_range& exception) {
     throw std::runtime_error("[read_cep_domain] Unknown model type '" + model_str + "'.");
   }
-  
-  // Set model parameters based on model type.
-  //
-  lDmn.cep.nG = 0;
+
   lDmn.cep.cepType = model_type;
 
-  switch (model_type) {
-    case ElectrophysiologyModelType::AP: 
-    case ElectrophysiologyModelType::FN:
-      lDmn.cep.nX = 2;
-    break;
+  // Setup the ionic models.
+  {
+    const std::string model_name = cep_model_type_to_name.at(model_type);
 
-    case ElectrophysiologyModelType::BO:
-      lDmn.cep.nX = 4;
-    break;
+    lDmn.cep.ionic_model = IonicModelFactory::create_model(model_name);
+    lDmn.cep.ionic_model->read_parameters(
+        *domain_params->ionic_models.at(model_name));
 
-    case ElectrophysiologyModelType::TTP:
-      lDmn.cep.nX = 7;
-      lDmn.cep.nG = 12;
-    break;
-
-    default: 
-    break;
+    // Set model parameters based on the instantiated ionic model.
+    lDmn.cep.nX = lDmn.cep.ionic_model->nX();
+    lDmn.cep.nG = lDmn.cep.ionic_model->nG();
   }
-  
+
   // Set the maximum number of dof for cellular activation model.
   auto& cep_mod = simulation->get_cep_mod();
   if (cep_mod.nXion < lDmn.cep.nX + lDmn.cep.nG) {
@@ -1077,25 +1070,6 @@ void read_cep_domain(Simulation* simulation, EquationParameters* eq_params, Doma
     }
   }
 
-  // Set Ttp parameters.
-  std::map<Parameter<double>*,double*> simple_ttp_params{
-    {&domain_params->G_Na,  &lDmn.cep.ttp.G_Na},
-    {&domain_params->G_Kr,  &lDmn.cep.ttp.G_Kr},
-    {&domain_params->G_CaL, &lDmn.cep.ttp.G_CaL},
-    {&domain_params->G_Ks,  &lDmn.cep.ttp.G_Ks},
-    {&domain_params->G_to,  &lDmn.cep.ttp.G_to},
-  };
-
-  for (auto& [param, value] : simple_ttp_params) {
-    if (param->defined()) {
-      *value = param->value();
-    }
-  }
-
-  if (model_type == ElectrophysiologyModelType::TTP) {
-    lDmn.cep.ttp.set_initial_conditions(domain_params->ttp_initial_conditions);
-  }
-
   // Set stimulus parameters. 
   //
   lDmn.cep.Istim.A  = 0.0;
@@ -1126,7 +1100,7 @@ void read_cep_domain(Simulation* simulation, EquationParameters* eq_params, Doma
 
   // Set time integrator.
   //
-  TimeIntegratioType time_integration_type;
+  TimeIntegrationType time_integration_type;
   auto ode_solver_str = domain_params->ode_solver.value();
   std::transform(ode_solver_str.begin(), ode_solver_str.end(), ode_solver_str.begin(), ::tolower);
   try {
@@ -1136,11 +1110,12 @@ void read_cep_domain(Simulation* simulation, EquationParameters* eq_params, Doma
   }
   lDmn.cep.odes.tIntType = time_integration_type;
 
-  if ((lDmn.cep.odes.tIntType == TimeIntegratioType::CN2) && (lDmn.cep.cepType == ElectrophysiologyModelType::TTP)) {
+  if ((lDmn.cep.odes.tIntType == TimeIntegrationType::CN2) &&
+      (lDmn.cep.cepType == ElectrophysiologyModelType::TTP)) {
     throw std::runtime_error("[read_cep_domain] Implicit time integration for tenTusscher-Panfilov model can give unexpected results. Use FE or RK4 instead");
   }
 
-  if (lDmn.cep.odes.tIntType == TimeIntegratioType::CN2) {
+  if (lDmn.cep.odes.tIntType == TimeIntegrationType::CN2) {
     lDmn.cep.odes.maxItr = 5;
     lDmn.cep.odes.absTol = 1e-8;
     lDmn.cep.odes.relTol = 1e-4;
@@ -1498,7 +1473,7 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
     }
   }
 
-  // Read VTK files or boundaries. [TODO:DaveP] this is not a correct comment.
+  // Read parameters related to VTU output.
   read_outputs(simulation, eq_params, lEq, nDOP, outPuts);
 
   // Set the number of function spaces
@@ -2380,6 +2355,34 @@ void read_outputs(Simulation* simulation, EquationParameters* eq_params, eqType&
       auto alias_name = output_params->get_alias_value(lEq.output[i].name);
       if (alias_name.size() != 0) { 
         lEq.output[i].name = alias_name;
+      }
+    }
+  }
+
+  // If this is the CEP equation, dynamically register output variables
+  // requested by the ionic models
+  if (lEq.phys == consts::EquationType::phys_CEP) {
+    bool output_ionic_vars = false;
+    for (auto out_params : eq_params->outputs)
+      if (out_params->type.value() == "Spatial") {
+        output_ionic_vars =
+            out_params->get_output_value("Ionic_state_variables");
+        break;
+      }
+
+    if (output_ionic_vars) {
+      for (const auto &dmn : lEq.dmn) {
+        if (dmn.phys != consts::EquationType::phys_CEP)
+          continue;
+
+        svmp::check_not_null<svmp::FE::NotInitializedException>(
+            dmn.cep.ionic_model, SVMP_HERE, "ionic model was not constructed.");
+
+        const auto registered_outputs =
+            dmn.cep.ionic_model->get_registered_outputs();
+        lEq.output.insert(lEq.output.end(), registered_outputs.begin(),
+                          registered_outputs.end());
+        lEq.nOutput += registered_outputs.size();
       }
     }
   }

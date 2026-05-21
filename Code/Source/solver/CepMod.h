@@ -8,19 +8,16 @@
 // model equation. It also interfaces with individual modules for
 // the cellular activation model.
 
+#ifndef CEP_MOD_H
+#define CEP_MOD_H
 
-#ifndef CEP_MOD_H 
-#define CEP_MOD_H 
-
-#include "CepModAp.h"
-#include "CepModBo.h"
-#include "CepModFn.h"
-#include "CepModTtp.h"
 #include "consts.h"
+#include "ionic_model.h"
 
 #include "Array.h"
 #include "Vector.h"
 #include <map>
+#include <memory>
 
 /// @brief Type of cardiac electrophysiology models.
 enum class ElectrophysiologyModelType {
@@ -31,6 +28,7 @@ enum class ElectrophysiologyModelType {
   TTP = 104
 };
 
+extern const std::map<ElectrophysiologyModelType, std::string> cep_model_type_to_name;
 extern const std::map<std::string,ElectrophysiologyModelType> cep_model_name_to_type;
 
 /// @brief Print ElectrophysiologyModelType as a string.
@@ -45,46 +43,6 @@ static std::ostream &operator << ( std::ostream& strm, ElectrophysiologyModelTyp
   };
   return strm << names.at(type);
 }
-
-/// @brief Time integration scheme.
-enum class TimeIntegratioType {
-  NA = 200, 
-  FE = 201,
-  RK4 = 202, 
-  CN2 = 203
-};
-
-extern const std::map<std::string,TimeIntegratioType> cep_time_int_to_type;
-
-static std::ostream &operator << ( std::ostream& strm, TimeIntegratioType type)
-{
-  const std::map<TimeIntegratioType, std::string> names = { 
-    {TimeIntegratioType::NA, "NA"}, 
-    {TimeIntegratioType::FE, "FE"}, 
-    {TimeIntegratioType::RK4, "RK4"}, 
-    {TimeIntegratioType::CN2, "CN2"}, 
-  };
-  return strm << names.at(type);
-}
-
-/// @brief Time integration scheme and related parameters
-class odeType {
-  public:
-    odeType() {};
-
-    /// @brief Time integration method type
-    TimeIntegratioType tIntType = TimeIntegratioType::NA;
-    //int tIntType = tIntType_NA;
-
-    /// @brief Max. iterations for Newton-Raphson method
-    int maxItr = 5;
-
-    /// @brief Absolute tolerance
-    double absTol = 1.E-8;
-
-    /// @brief Relative tolerance
-    double relTol = 1.E-4;
-};
 
 /// @brief External stimulus type
 class stimType
@@ -166,17 +124,8 @@ class cepModelType
     /// @brief  Time integration options
     odeType odes;
 
-    /// @brief Interface for Aliev-Panfilov cellular activation model
-    CepModAp ap;
-
-    /// @brief Interface for Bueno-Orovio cellular activation model
-    CepModBo bo;
-
-    /// @brief Interface for Fitzhugh-Nagumo cellular activation model
-    CepModFn fn;
-
-    /// @brief Interface for Tusscher-Panfilov cellular activation model
-    CepModTtp ttp;
+    /// @brief Ionic model instance.
+    std::shared_ptr<IonicModel> ionic_model;
 };
 
 /// @brief Cardiac electromechanics model type
@@ -216,18 +165,6 @@ class CepMod
 
     /// @brief Cardiac electromechanics type
     cemModelType cem;
-
-    /// @brief Interface for Aliev-Panfilov cellular activation model.
-    CepModAp ap;
-
-    /// @brief Interface for ABueno-Orovio cellular activation model.
-    CepModBo bo;
-
-    /// @brief Interface for Fitzhugh-Nagumo cellular activation model.
-    CepModFn fn;
-
-    /// @brief Interface for Tusscher-Panfilov cellular activation model.
-    CepModTtp ttp;
 
     /// @brief ECG leads
     ecgLeadsType ecgleads;

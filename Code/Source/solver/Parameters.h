@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #ifndef PARAMETERS_H 
-#define PARAMETERS_H 
+#define PARAMETERS_H
 
 #include <any>
 #include <functional>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -15,6 +16,8 @@
 #include <tuple>
 #include <variant>
 #include <vector>
+
+#include "Vector.h"
 
 #include "Core/Exception.h"
 #include "tinyxml2.h"
@@ -228,6 +231,17 @@ class VectorParameter
       std::regex sep("\\(|\\)|\\,");
       auto str = std::regex_replace(str_value, sep, " ");
 
+      // If this is the first time this method is called, we clear any previous
+      // content of the vector of values. This means that, when the XML tag
+      // associated to this parameter is encoutered for the first time, the
+      // values given when declaring the parameter (see other overload of the
+      // set function) will be discarded. However, if the same XML tag is
+      // encountered again, the new values are appended, without discarding the
+      // previously encoutered ones.
+      if (!value_set_) {
+        value_.clear();
+      }
+
       if constexpr (std::is_same<T, std::string>::value) {
         std::stringstream ssin(str);
         std::string value;
@@ -241,6 +255,8 @@ class VectorParameter
           value_.push_back(value);
         }
       }
+
+      value_set_ = true;
     }
 
     bool check_required_set()
@@ -384,8 +400,7 @@ class ParameterLists
     }
 
     /// @brief Get the defined parameters as a map of strings.
-    std::map<std::string,std::string> get_parameter_list()
-    {
+    std::map<std::string, std::string> get_parameter_list() const {
       std::map<std::string,std::string> params;
 
       for (auto& [ key, param ] : params_map) {
@@ -1181,79 +1196,126 @@ class FiberReinforcementStressParameters : public ParameterLists
     bool value_set = false;
 };
 
-/// @brief Stores parameters for the 'Gating_variables' XML element
-/// under TTP_initial_conditions.
-class TTPGatingVariablesParameters : public ParameterLists
-{
-  public:
-    TTPGatingVariablesParameters();
+/// @brief Generic ionic model initial conditions parameters.
+class IonicInitialStateParameters : public ParameterLists {
+public:
+  /// Constructor.
+  IonicInitialStateParameters(
+      const std::string &xml_element_name_,
+      const std::vector<std::pair<std::string, double>> &states);
 
-    static const std::string xml_element_name_;
+  /// Return whether the parameters represented by this object were defined.
+  bool defined() const { return value_set; }
 
-    bool defined() const { return value_set; };
-    void print_parameters();
-    void set_values(tinyxml2::XMLElement* xml_elem);
+  /// Print the value of parameters.
+  void print_parameters() const;
 
-    Parameter<double> x_r1_rectifier;
-    Parameter<double> x_r2_rectifier;
-    Parameter<double> x_s_rectifier;
+  /// Set the value of parameters in this object from an XML element.
+  void set_values(const tinyxml2::XMLElement *xml_elem);
 
-    Parameter<double> m_fast_Na;
-    Parameter<double> h_fast_Na;
-    Parameter<double> j_fast_Na;
+  /// Get the value of a parameter by label.
+  double operator[](const std::string &label) const {
+    return parameters.at(label).value();
+  }
 
-    Parameter<double> d_slow_in;
-    Parameter<double> f_slow_in;
-    Parameter<double> f2_slow_in;
-    Parameter<double> fcass_slow_in;
+  /// Name of the XML element for this object.
+  const std::string xml_element_name;
 
-    Parameter<double> s_out;
-    Parameter<double> r_out;
+  /// Flag indicating whether these XML section represented by this object is
+  /// required. It is set to true if the number of states provided to the
+  /// constructor is greater than zero.
+  const bool required;
 
-    bool value_set = false;
+protected:
+  /// Parameter instances underlying this object.
+  std::map<std::string, Parameter<double>> parameters;
+
+  /// Flag indicating whether the values of the parameters stored in this
+  /// object have been set.
+  bool value_set = false;
 };
 
-/// @brief Stores parameters for the 'Initial_states' XML element
-/// under TTP_initial_conditions.
-class TTPInitialStatesParameters : public ParameterLists
-{
-  public:
-    TTPInitialStatesParameters();
+/// @brief Initial conditions parameters for a generic ionic model.
+///
+/// Bundles initial conditions for the model's ionic concentrations and gating
+/// variables, represented by two instances of IonicInitialStateParameters.
+class IonicModelParameters : public ParameterLists {
+public:
+  /// Constructor.
+  IonicModelParameters(
+      const std::string &xml_element_name_,
+      const std::vector<std::pair<std::string, double>> &initial_X,
+      const std::vector<std::pair<std::string, double>> &initial_Xg);
 
-    static const std::string xml_element_name_;
+  /// Return whether the parameters represented by this object were defined.
+  bool defined() const { return value_set; }
 
-    bool defined() const { return value_set; };
-    void print_parameters();
-    void set_values(tinyxml2::XMLElement* xml_elem);
+  /// Print the value of parameters.
+  void print_parameters() const;
 
-    Parameter<double> V;
-    Parameter<double> K_i;
-    Parameter<double> Na_i;
-    Parameter<double> Ca_i;
-    Parameter<double> Ca_ss;
-    Parameter<double> Ca_sr;
-    Parameter<double> R_bar;
+  /// Set the values of parameters in this object from an XML element.
+  void set_values(const tinyxml2::XMLElement *xml_elem);
 
-    bool value_set = false;
-};
+  /// Get the parameters for the state variables.
+  const IonicInitialStateParameters &get_initial_X() const {
+    return initial_X_parameters;
+  }
 
-/// @brief Stores parameters for the 'TTP_initial_conditions' XML element
-/// under Domain.
-class TTPInitialConditionsParameters : public ParameterLists
-{
-  public:
-    TTPInitialConditionsParameters();
+  /// Get the parameters for the gating variables.
+  const IonicInitialStateParameters &get_initial_Xg() const {
+    return initial_Xg_parameters;
+  }
 
-    static const std::string xml_element_name_;
+  /// Name of the XML element for this object.
+  const std::string xml_element_name;
 
-    bool defined() const { return value_set; };
-    void print_parameters();
-    void set_values(tinyxml2::XMLElement* xml_elem);
+  /// Get the value of a scalar parameter by label.
+  double get_scalar(const std::string &label) const {
+    return parameters.at(label).value();
+  }
 
-    TTPInitialStatesParameters initial_states;
-    TTPGatingVariablesParameters gating_variables;
+  /// Get the value of a vector parameter by label.
+  Vector<double> get_vector(const std::string &label) const {
+    auto param_value = vector_parameters.at(label).value();
 
-    bool value_set = false;
+    Vector<double> param_vec(param_value.size());
+    for (size_t i = 0; i < param_value.size(); ++i)
+      param_vec[i] = param_value[i];
+
+    return param_vec;
+  }
+
+protected:
+  /// Add a new parameter to this object.
+  void add_parameter(const std::string &label, double default_value,
+                     bool required) {
+    set_parameter(label, default_value, required, parameters[label]);
+  }
+
+  /// Add a new vector parameter to this object.
+  void add_parameter(const std::string &label,
+                     std::initializer_list<double> default_value,
+                     bool required) {
+    set_parameter(label, default_value, required, vector_parameters[label]);
+  }
+
+  /// Parameters for the state variables.
+  IonicInitialStateParameters initial_X_parameters;
+
+  /// Parameters for the gating variables.
+  IonicInitialStateParameters initial_Xg_parameters;
+
+  /// Other parameters (i.e. other than initial conditions) are stored in a map
+  /// as key-parameter pairs. Derived classes should add parameters to this map
+  /// in their constructors by calling add_parameter.
+  std::map<std::string, Parameter<double>> parameters;
+
+  /// Vector parameters are stored in a map as key-parameter pairs.
+  std::map<std::string, VectorParameter<double>> vector_parameters;
+
+  /// Flag indicating whether the values of the parameters stored in this
+  /// object have been set.
+  bool value_set = false;
 };
 
 /// @brief The DomainParameters class stores parameters for the XML
@@ -1285,7 +1347,9 @@ class DomainParameters : public ParameterLists
     StimulusParameters stimulus;
     FluidViscosityParameters fluid_viscosity;
     SolidViscosityParameters solid_viscosity;
-    TTPInitialConditionsParameters ttp_initial_conditions;
+
+    // Ionic model parameters.
+    std::map<std::string, std::unique_ptr<IonicModelParameters>> ionic_models;
 
     // Attributes.
     Parameter<std::string> id;
@@ -1318,15 +1382,6 @@ class DomainParameters : public ParameterLists
     Parameter<int> maximum_iterations;
     Parameter<double> momentum_stabilization_coefficient;
     Parameter<std::string> myocardial_zone;
-
-    Parameter<double> G_Na;
-    Parameter<double> G_CaL;
-    Parameter<double> G_Kr;
-    Parameter<double> G_Ks;
-    Parameter<double> G_to;
-
-    Parameter<double> tau_fi;
-    Parameter<double> tau_si;
 
     Parameter<std::string> ode_solver;
     Parameter<double> penalty_parameter;

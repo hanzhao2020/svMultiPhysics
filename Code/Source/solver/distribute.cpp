@@ -5,9 +5,8 @@
 
 #include "distribute.h"
 
-#include "all_fun.h"
-#include "CepModTtp.h"
 #include "ComMod.h"
+#include "all_fun.h"
 #include "consts.h"
 #include "nn.h"
 #include "utils.h"
@@ -18,6 +17,8 @@
 
 #include <iostream>
 #include <math.h>
+
+#include "ionic_model.h"
 
 extern "C" {
 
@@ -1541,6 +1542,13 @@ void dist_eq(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm, const std::
     if (dmn.phys == EquationType::phys_CEP) {
       auto& cep = dmn.cep;
       cm.bcast_enum(cm_mod, &cep.cepType);
+
+      // All ranks but the master need to allocate the ionic model instance.
+      if (!cm.mas(cm_mod)) {
+        cep.ionic_model = IonicModelFactory::create_model(
+            cep_model_type_to_name.at(cep.cepType));
+      }
+
       cm.bcast(cm_mod, &cep.nX);
       cm.bcast(cm_mod, &cep.nG);
       cm.bcast(cm_mod, &cep.nFn);
@@ -1560,18 +1568,13 @@ void dist_eq(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm, const std::
       cm.bcast(cm_mod, &cep.Istim.A);
       cm.bcast_enum(cm_mod, &cep.odes.tIntType);
 
-      if (cep.odes.tIntType == TimeIntegratioType::CN2) {
+      if (cep.odes.tIntType == TimeIntegrationType::CN2) {
         cm.bcast(cm_mod, &cep.odes.maxItr);
         cm.bcast(cm_mod, &cep.odes.absTol);
         cm.bcast(cm_mod, &cep.odes.relTol);
       }
 
-      // Broadcast domain-specific model parameters
-      cep.ttp.distribute_conductance(cm_mod, cm);
-      cep.ttp.distribute_initial_state(cm_mod, cm);
-
-      cm.bcast(cm_mod, cep.bo.tau_si);
-      cm.bcast(cm_mod, cep.bo.tau_fi);
+      cep.ionic_model->distribute_parameters(cm_mod, cm);
     } 
 
     if ((dmn.phys == EquationType::phys_struct) || (dmn.phys == EquationType::phys_ustruct)) {
