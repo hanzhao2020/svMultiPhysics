@@ -557,8 +557,6 @@ void uris_read_msh(Simulation* simulation) {
   com_mod.urisFlag = true;
   com_mod.urisActFlag = true;
 
-  auto param = simulation->parameters.URIS_mesh_parameters[0];
-
   int nUris = simulation->parameters.URIS_mesh_parameters.size();
   com_mod.nUris = nUris;
 
@@ -1293,15 +1291,14 @@ void uris_compute_ris_factor(const ComMod& com_mod, const mshType& lM, const fsT
     dmsg << "computing RIS factor";
   #endif
 
-  const int eNoN = lM.eNoN;
   const int nUris = com_mod.nUris;
   ris_factor_total_el.resize(fs.nG);
   ris_factor_total_el = 0.0;
+  Vector<double> dist_srf(nUris);
 
   for (int g = 0; g < fs.nG; g++) {
-    Vector<double> dist_srf(nUris);
     dist_srf = 0.0;
-    for (int a = 0; a < eNoN; a++) {
+    for (int a = 0; a < fs.eNoN; a++) {
       int Ac = lM.IEN(a,e);
       for (int iUris = 0; iUris < nUris; iUris++) {
         dist_srf(iUris) += fs.N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
