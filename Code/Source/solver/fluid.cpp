@@ -621,9 +621,10 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
     Array<double> ksix(nsd,nsd);
     // Total resistance factor value of the RIS valves for the current element 
     // at different quadrature points
-    Vector<double> risFactorTotalEl;
+    Vector<double> urisFactorTotalEl;
+    Array<double> urisValveVelTotalEl;
     if (com_mod.urisFlag) {
-      uris::uris_compute_ris_factor(com_mod, lM, fs[0], e, risFactorTotalEl);
+      uris::eval_uris_ris_factors_quadrature(com_mod, lM, fs[0], e, urisFactorTotalEl, urisValveVelTotalEl);
     }
 
     for (int g = 0; g < fs[0].nG; g++) {
@@ -661,12 +662,15 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
         auto N0 = fs[0].N.rcol(g); 
         auto N1 = fs[1].N.rcol(g); 
         double risFactorTotal = 0.0;
+        Vector<double> risValveVelTotal(nsd);
+        risValveVelTotal = 0.0;
         if (com_mod.urisFlag) {
-          risFactorTotal = risFactorTotalEl(g);
+          risFactorTotal = urisFactorTotalEl(g);
+          risValveVelTotal = urisValveVelTotalEl.rcol(g);
         }
         fluid_3d_m(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, 
             Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, 
-            risFactorTotal);
+            risFactorTotal, risValveVelTotal);
 
       } else if (nsd == 2) {
         auto N0 = fs[0].N.rcol(g); 
@@ -694,8 +698,8 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
     // If the number of quadrature points is different for the continuity and 
     // momentum function spaces, recompute the RIS factor
     if (com_mod.urisFlag) {
-      if (static_cast<int>(risFactorTotalEl.size()) != fs[1].nG) {
-        uris::uris_compute_ris_factor(com_mod, lM, fs[1], e, risFactorTotalEl);
+      if (static_cast<int>(urisFactorTotalEl.size()) != fs[1].nG) {
+        uris::eval_uris_ris_factors_quadrature(com_mod, lM, fs[1], e, urisFactorTotalEl, urisValveVelTotalEl);
       }
     }
 
@@ -725,12 +729,15 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
         auto N0 = fs[0].N.rcol(g); 
         auto N1 = fs[1].N.rcol(g); 
         double risFactorTotal = 0.0;
+        Vector<double> risValveVelTotal(nsd);
+        risValveVelTotal = 0.0;
         if (com_mod.urisFlag) {
-          risFactorTotal = risFactorTotalEl(g);
+          risFactorTotal = urisFactorTotalEl(g);
+          risValveVelTotal = urisValveVelTotalEl.rcol(g);
         }
         fluid_3d_c(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, 
               Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, 
-              risFactorTotal);
+              risFactorTotal, risValveVelTotal);
 
       } else if (nsd == 2) {
         auto N0 = fs[0].N.rcol(g); 
@@ -1439,7 +1446,7 @@ void fluid_3d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
     const Array<double>& Kxi, const Vector<double>& Nw, const Vector<double>& Nq, const Array<double>& Nwx, 
     const Array<double>& Nqx, const Array<double>& Nwxx, const Array<double>& al, const Array<double>& yl, 
     const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability, 
-    double risFactorTotal)
+    const double risFactorTotal, const Vector<double>& risValveVelTotal)
 {
   #define n_debug_fluid3d_c
   #ifdef debug_fluid3d_c
@@ -1682,11 +1689,11 @@ void fluid_3d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
     // up[2] = -tauM*(rho*rV[2] + px[2] - rS[2] + mu*K_inverse_darcy_permeability*u[2]);
 
     up[0] = -tauM*(rho*rV[0] + px[0] - rS[0] + mu*K_inverse_darcy_permeability*u[0]
-                   + risFactorTotal*u[0]);
+                   + risFactorTotal*u[0] - risValveVelTotal[0]);
     up[1] = -tauM*(rho*rV[1] + px[1] - rS[1] + mu*K_inverse_darcy_permeability*u[1]
-                   + risFactorTotal*u[1]);
+                   + risFactorTotal*u[1] - risValveVelTotal[1]);
     up[2] = -tauM*(rho*rV[2] + px[2] - rS[2] + mu*K_inverse_darcy_permeability*u[2]
-                   + risFactorTotal*u[2]);
+                   + risFactorTotal*u[2] - risValveVelTotal[2]);
 
     for (int a = 0; a < eNoNw; a++) {
       double uNx = u[0]*Nwx(0,a) + u[1]*Nwx(1,a) + u[2]*Nwx(2,a);
@@ -1764,7 +1771,7 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
     const Array<double>& Kxi, const Vector<double>& Nw, const Vector<double>& Nq, const Array<double>& Nwx,
     const Array<double>& Nqx, const Array<double>& Nwxx, const Array<double>& al, const Array<double>& yl,
     const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability, 
-    double risFactorTotal)
+    const double risFactorTotal, const Vector<double>& risValveVelTotal)
 {
   #define n_debug_fluid_3d_m
   #ifdef debug_fluid_3d_m
@@ -2035,11 +2042,11 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
   // up[2] = -tauM*(rho*rV[2] + px[2] - rS[2] + mu*K_inverse_darcy_permeability * u[2]);
 
   up[0] = -tauM*(rho*rV[0] + px[0] - rS[0] + mu*K_inverse_darcy_permeability * u[0]
-                 + risFactorTotal * u[0]);
+                 + risFactorTotal * u[0] - risValveVelTotal[0]);
   up[1] = -tauM*(rho*rV[1] + px[1] - rS[1] + mu*K_inverse_darcy_permeability * u[1]
-                 + risFactorTotal * u[1]);
+                 + risFactorTotal * u[1] - risValveVelTotal[1]);
   up[2] = -tauM*(rho*rV[2] + px[2] - rS[2] + mu*K_inverse_darcy_permeability * u[2]
-                 + risFactorTotal * u[2]);
+                 + risFactorTotal * u[2] - risValveVelTotal[2]);
 
   double tauC, tauB, pa;
   double eps = std::numeric_limits<double>::epsilon();
@@ -2222,11 +2229,11 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
   // Local residue
   for (int a = 0; a < eNoNw; a++) {
       lR(0,a) = lR(0,a) + mu*K_inverse_darcy_permeability*w*Nw(a)*(u[0]+up[0])
-                        + risFactorTotal*w*Nw(a)*u[0];
+                        + w*Nw(a)*(risFactorTotal*u[0] - risValveVelTotal[0]);
       lR(1,a) = lR(1,a) + mu*K_inverse_darcy_permeability*w*Nw(a)*(u[1]+up[1])
-                        + risFactorTotal*w*Nw(a)*u[1];
+                        + w*Nw(a)*(risFactorTotal*u[1] - risValveVelTotal[1]);
       lR(2,a) = lR(2,a) + mu*K_inverse_darcy_permeability*w*Nw(a)*(u[2]+up[2])
-                        + risFactorTotal*w*Nw(a)*u[2];
+                        + w*Nw(a)*(risFactorTotal*u[2] - risValveVelTotal[2]);
   }
 
 }
