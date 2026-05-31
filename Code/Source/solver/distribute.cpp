@@ -1180,7 +1180,7 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, &uris[iUris].clsFlg);
     cm.bcast(cm_mod, &uris[iUris].invert_normal);
     cm.bcast(cm_mod, &uris[iUris].sdf_computed);
-    cm.bcast(cm_mod, &uris[iUris].include_RIS_velocity);
+    cm.bcast(cm_mod, &uris[iUris].include_uris_velocity);
     cm.bcast(cm_mod, &uris[iUris].cnt);
     cm.bcast(cm_mod, &uris[iUris].scF);
     cm.bcast(cm_mod, uris[iUris].nrm);
@@ -1342,7 +1342,7 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
       uris[iUris].Yd.resize(com_mod.nsd, uris[iUris].tnNo);
       DxOpenFlat[iUris].resize(DxOpenFlatSize(iUris));
       DxCloseFlat[iUris].resize(DxCloseFlatSize(iUris));
-      if (uris[iUris].include_RIS_velocity) {
+      if (uris[iUris].include_uris_velocity) {
         uris[iUris].x_prev.resize(com_mod.nsd, uris[iUris].tnNo);
         uris[iUris].valve_velocity.resize(com_mod.nsd, uris[iUris].tnNo);
       }
@@ -1354,7 +1354,7 @@ void dist_uris(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm) {
     cm.bcast(cm_mod, uris[iUris].Yd);
     cm.bcast(cm_mod, DxOpenFlat[iUris]);
     cm.bcast(cm_mod, DxCloseFlat[iUris]);
-    if (uris[iUris].include_RIS_velocity) {
+    if (uris[iUris].include_uris_velocity) {
       cm.bcast(cm_mod, uris[iUris].x_prev);
       cm.bcast(cm_mod, uris[iUris].valve_velocity);
     }

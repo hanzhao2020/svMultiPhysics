@@ -1006,7 +1006,7 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
     nOut = nOut + com_mod.nUris;
     outDof = outDof + com_mod.nUris;
     for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
-      if (com_mod.uris[iUris].include_RIS_velocity) {
+      if (com_mod.uris[iUris].include_uris_velocity) {
         nOut = nOut + 1;
         outDof = outDof + nsd;
       }
@@ -1367,7 +1367,7 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
       }
 
       for (int iUris = 0; iUris < com_mod.nUris; iUris++) {
-        if (com_mod.uris[iUris].include_RIS_velocity) {
+        if (com_mod.uris[iUris].include_uris_velocity) {
           cOut = cOut + 1;
           int is = outS[cOut];
           int ie = is + nsd - 1;

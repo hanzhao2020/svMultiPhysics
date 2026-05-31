@@ -1500,7 +1500,7 @@ class urisType
     bool invert_normal;
 
     // Whether to include the valve velocity in the RIS implementation. Default is false.
-    bool include_RIS_velocity;
+    bool include_uris_velocity;
 
     // Opening positions of the valve surfaces.
     Array3<double> DxOpen;

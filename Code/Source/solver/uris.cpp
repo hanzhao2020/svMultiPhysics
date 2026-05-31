@@ -600,7 +600,7 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.resistance = param->resistance();
     uris_obj.clsFlg = param->valve_starts_as_closed();
     uris_obj.invert_normal = param->invert_normal();
-    uris_obj.include_RIS_velocity = param->include_RIS_velocity();
+    uris_obj.include_uris_velocity = param->include_uris_velocity();
 
     // uris_obj.tnNo = 0;
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
@@ -760,7 +760,7 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.Yd.resize(nsd, uris_obj.tnNo);
     uris_obj.Yd = 0.0;
 
-    if (uris_obj.include_RIS_velocity) {
+    if (uris_obj.include_uris_velocity) {
       uris_obj.x_prev.resize(nsd, uris_obj.tnNo);
       uris_obj.x_prev = uris_obj.x;
       uris_obj.valve_velocity.resize(nsd, uris_obj.tnNo);
@@ -990,7 +990,7 @@ void uris_calc_sdf(ComMod& com_mod) {
     int cnt = std::min(uris_obj.cnt, Dx.nslices());
     uris_obj.x = Dx.rslice(cnt - 1);
 
-    if (uris_obj.include_RIS_velocity) {
+    if (uris_obj.include_uris_velocity) {
       if (cnt < uris_obj.cnt) {
         // Frozen at last frame: valve not changing
         uris_obj.x_prev = uris_obj.x;
@@ -1081,7 +1081,7 @@ void uris_calc_sdf(ComMod& com_mod) {
 
       uris_obj.sdf[ca] = sdf_sign * minS;
 
-      if (uris_obj.include_RIS_velocity) {
+      if (uris_obj.include_uris_velocity) {
         Vector<double> interp_valve_vel(nsd);
         uris_interp_valve_velocity(uris_obj, xp, nsd, jM, Ec, dotp, unitNormal, interp_valve_vel);
         uris_obj.valve_velocity_fluid.rcol(ca) = interp_valve_vel;
@@ -1400,7 +1400,7 @@ void eval_uris_ris_factors_quadrature(const ComMod& com_mod, const mshType& lM, 
       int Ac = lM.IEN(a,e);
       for (int iUris = 0; iUris < nUris; iUris++) {
         dist_srf(iUris) += fs.N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
-        if (com_mod.uris[iUris].include_RIS_velocity) {
+        if (com_mod.uris[iUris].include_uris_velocity) {
           valve_velocity.rcol(iUris) = valve_velocity.rcol(iUris) +
               fs.N(a,g) * com_mod.uris[iUris].valve_velocity_fluid.rcol(Ac);
         }
@@ -1443,7 +1443,7 @@ void eval_uris_ris_factors_quadrature(const ComMod& com_mod, const mshType& lM, 
       }
       ris_factor_total_el(g) += com_mod.uris[iUris].resistance * delta_eps;
 
-      if (com_mod.uris[iUris].include_RIS_velocity) {
+      if (com_mod.uris[iUris].include_uris_velocity) {
         ris_valve_vel_total_el.rcol(g) = ris_valve_vel_total_el.rcol(g) 
           + com_mod.uris[iUris].resistance * delta_eps*valve_velocity.rcol(iUris);
       }
