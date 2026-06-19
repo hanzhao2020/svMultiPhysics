@@ -551,19 +551,33 @@ void uris_compute_expanded_bbox(const Array<double>& x, const int nsd, const dou
                                 Vector<double>& minb, Vector<double>& maxb) {
   minb.resize(nsd);
   maxb.resize(nsd);
+  Vector<double> min_val(nsd);
+  Vector<double> max_val(nsd);
 
   for (int i = 0; i < nsd; i++) {
-    double min_val = std::numeric_limits<double>::max();
-    double max_val = std::numeric_limits<double>::lowest();
+    min_val(i) = std::numeric_limits<double>::max();
+    max_val(i) = std::numeric_limits<double>::lowest();
     for (int j = 0; j < x.ncols(); j++) {
       const double val = x(i,j);
-      if (val < min_val) { min_val = val; }
-      if (val > max_val) { max_val = val; }
+      if (val < min_val(i)) { min_val(i) = val; }
+      if (val > max_val(i)) { max_val(i) = val; }
     }
+  }
+  // Compute the diagonal length of the bounding box for use in degenerate cases where max_val == min_val
+  double diag_length = std::sqrt((max_val - min_val) * (max_val - min_val));
 
-    const double extra = (max_val - min_val) * expansion;
-    minb(i) = min_val - extra;
-    maxb(i) = max_val + extra;
+  for (int i = 0; i < nsd; i++) {
+    double extra = 0.0;
+    if (max_val(i) > min_val(i)) {
+      extra = (max_val(i) - min_val(i)) * expansion;
+    } else if (max_val(i) == min_val(i)) {
+      // When points are all the same in this dimension, use the diagonal length of the bounding box
+      extra = expansion * (diag_length > 0.0 ? diag_length : 1.0);
+    } else {
+      throw std::runtime_error("Invalid bounding box: max_val < min_val for dimension " + std::to_string(i));
+    }
+    minb(i) = min_val(i) - extra;
+    maxb(i) = max_val(i) + extra;
   }
 }
 
@@ -1569,11 +1583,9 @@ void eval_uris_ris_factors_quadrature(const ComMod& com_mod, const mshType& lM, 
         double progress = static_cast<double>(com_mod.uris[iUris].cnt) / static_cast<double>(n_steps);
         sdf_deps = start_deps + progress * (end_deps - start_deps);
       }
-
       if (dist_srf(iUris) < sdf_deps && sdf_deps > 0.0) {
         delta_eps = (1 + cos(consts::pi*dist_srf(iUris)/sdf_deps))/(2*sdf_deps*sdf_deps);
       }
-
       if (com_mod.uris[iUris].scaffold_flag) {
         // Compute the scaffold resistance factor based on the unsigned distance function (UDF)
         // The scaffold surface uses the same thickness parameter as the closed valve surface
