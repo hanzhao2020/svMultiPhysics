@@ -18,6 +18,10 @@
 
 namespace uris { 
 
+void uris_find_closest_mesh_centroid(const mshType& mesh, const Vector<double>& xp,
+                                     const int nsd, double& minS, int& Ec,
+                                     Vector<double>& xb);
+
 /// @brief This subroutine computes the mean pressure and flux on the 
 /// immersed surface 
 void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionStates& solutions) {
@@ -542,6 +546,38 @@ void uris_build_fluid_node_mask(ComMod& com_mod) {
   }
 }
 
+/// @brief Build an expanded bounding box around coordinates.
+void uris_compute_expanded_bbox(const Array<double>& x, const int nsd, const double expansion,
+                                Vector<double>& minb, Vector<double>& maxb) {
+  minb.resize(nsd);
+  maxb.resize(nsd);
+
+  for (int i = 0; i < nsd; i++) {
+    double min_val = std::numeric_limits<double>::max();
+    double max_val = std::numeric_limits<double>::lowest();
+    for (int j = 0; j < x.ncols(); j++) {
+      const double val = x(i,j);
+      if (val < min_val) { min_val = val; }
+      if (val > max_val) { max_val = val; }
+    }
+
+    const double extra = (max_val - min_val) * expansion;
+    minb(i) = min_val - extra;
+    maxb(i) = max_val + extra;
+  }
+}
+
+/// @brief Check if a point lies inside a bounding box.
+bool uris_point_in_bbox(const Vector<double>& xp, const Vector<double>& minb,
+                        const Vector<double>& maxb, const int nsd) {
+  for (int i = 0; i < nsd; ++i) {
+    if (xp(i) < minb(i) || xp(i) > maxb(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// @brief Read the URIS mesh separately 
 void uris_read_msh(Simulation* simulation) {
   #define n_debug_uris_read_msh 
@@ -607,6 +643,47 @@ void uris_read_msh(Simulation* simulation) {
     uris_obj.clsFlg = param->valve_starts_as_closed();
     uris_obj.invert_normal = param->invert_normal();
     uris_obj.include_uris_velocity = param->include_uris_velocity();
+    std::string scaffold_file_path = param->scaffold_file_path();
+
+    if (scaffold_file_path != "") {
+      uris_obj.scaffold_flag = true;
+      uris_obj.scaffold_msh.lShl = true;
+      vtk_xml::read_vtu(scaffold_file_path, uris_obj.scaffold_msh);
+      // Scale the scaffold mesh coordinates by scF to match the URIS mesh scale
+      for (int a = 0; a < uris_obj.scaffold_msh.gnNo; a++) {
+        uris_obj.scaffold_msh.x.rcol(a) = uris_obj.scaffold_msh.x.rcol(a) * uris_obj.scF;
+      }
+      nn::select_ele(com_mod, uris_obj.scaffold_msh);
+      read_msh_ns::check_ien(simulation, uris_obj.scaffold_msh);
+
+      int b = 0;
+      auto& scaffold_mesh = uris_obj.scaffold_msh;
+      scaffold_mesh.nNo = scaffold_mesh.gnNo;
+      scaffold_mesh.gN.resize(scaffold_mesh.nNo);
+      scaffold_mesh.gN = 0;
+      scaffold_mesh.lN.resize(scaffold_mesh.nNo);
+      scaffold_mesh.lN = 0;
+      for (int a = 0; a < scaffold_mesh.nNo; a++) {
+        scaffold_mesh.gN(a) = b;
+        scaffold_mesh.lN(b) = a;
+        b++;
+      }
+      // Remap msh%gIEN array
+      scaffold_mesh.nEl = scaffold_mesh.gnEl;
+      scaffold_mesh.IEN.resize(scaffold_mesh.eNoN, scaffold_mesh.nEl);
+      for (int e = 0; e < scaffold_mesh.nEl; e++) {
+        for (int a = 0; a < scaffold_mesh.eNoN; a++) {
+          int Ac = scaffold_mesh.gIEN(a,e);
+          Ac = scaffold_mesh.gN(Ac);
+          scaffold_mesh.IEN(a,e) = Ac;
+        }
+      }
+      scaffold_mesh.gIEN.clear();
+
+      std::cout << "Scaffold mesh is included for: " << uris_obj.name << std::endl;
+      std::cout << "Scaffold mesh nodes: " << uris_obj.scaffold_msh.gnNo << std::endl;
+      std::cout << "Scaffold mesh elements: " << uris_obj.scaffold_msh.gnEl << std::endl;
+    }
 
     // uris_obj.tnNo = 0;
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
@@ -1037,38 +1114,32 @@ void uris_calc_sdf(ComMod& com_mod) {
       uris_obj.valve_velocity_fluid = 0.0;
     }
 
-    if (cnt < uris_obj.cnt && uris_obj.sdf_computed) {
+    const bool compute_valve_sdf = !(cnt < uris_obj.cnt && uris_obj.sdf_computed);
+    const bool compute_scaffold_udf = uris_obj.scaffold_flag && !uris_obj.scaffold_udf_computed;
+    if (!compute_valve_sdf && !compute_scaffold_udf) {
       continue;
     }
-    uris_obj.sdf = uris_obj.sdf_default;
-  
-    if (cm.idcm() == 0) {
-      std::cout << "Recomputing SDF for " << uris_obj.name << std::endl;
-    }
 
-    // Each time when the URIS moves (open/close), we need to 
-    // recompute the signed distance function.
-    // Find the bounding box of the valve, the BBox will be 10% larger
-    // than the actual valve.
+    const double bbox_expansion = 0.1;
     Vector<double> minb(nsd);
     Vector<double> maxb(nsd);
-    Vector<double> extra(nsd);
-    for (int i = 0; i < nsd; i++) {
-      minb(i) = std::numeric_limits<double>::max();
-      maxb(i) = std::numeric_limits<double>::lowest();
+    if (compute_valve_sdf) {
+      uris_obj.sdf = uris_obj.sdf_default;
+
+      if (cm.idcm() == 0) {
+        std::cout << "Recomputing SDF for " << uris_obj.name << std::endl;
+      }
+
+      // The valve BBox is 10% larger than the current valve coordinates.
+      uris_compute_expanded_bbox(uris_obj.x, nsd, bbox_expansion, minb, maxb);
     }
 
-    // For each coordinate dimension, find the minimum and maximum in uris_obj.x.
-    double extra_val = 0.1;  // [HZ] The BBox is 10% larger than the actual valve, default is 0.1
-    for (int i = 0; i < nsd; i++) {
-      for (int j = 0; j < uris_obj.x.ncols(); j++) {
-        double val = uris_obj.x(i,j);
-        if (val < minb(i))
-            minb(i) = val;
-        if (val > maxb(i))
-            maxb(i) = val;
-      }
-      extra(i) = (maxb(i) - minb(i)) * extra_val;
+    auto& scaffold_mesh = uris_obj.scaffold_msh;
+    Vector<double> minb_scaf(nsd);
+    Vector<double> maxb_scaf(nsd);
+    if (compute_scaffold_udf) {
+      uris_obj.scaffold_udf = uris_obj.sdf_default;
+      uris_compute_expanded_bbox(scaffold_mesh.x, nsd, bbox_expansion, minb_scaf, maxb_scaf);
     }
 
     // The SDF is computed on the reference configuration, which
@@ -1078,47 +1149,45 @@ void uris_calc_sdf(ComMod& com_mod) {
     // this is a simplifying assumption. 
     Vector<double> xp(nsd);
     for (int ca = 0; ca < com_mod.tnNo; ca++) {
-      double minS = std::numeric_limits<double>::max();
       xp = com_mod.x.rcol(ca);
-      // Check whether the node lies inside the expanded bounding box
-      bool inside_bbox = true;
-      for (int i = 0; i < nsd; ++i) {
-        const double lower = minb(i) - extra(i);
-        const double upper = maxb(i) + extra(i);
-        if (xp(i) < lower || xp(i) > upper) {
-          inside_bbox = false;
-          break;
-        }
-      }
-      if (!inside_bbox) {
-        continue;
-      }
-
       if (!com_mod.urisFluidNodeMask[ca]) {
         continue;
       }
 
-      // This point is in the fluid domain and inside the BBox
-      // Find the closest URIS face centroid
-      int Ec = -1;
-      int jM = -1;
-      Vector<double> xb(nsd);
-      Vector<double> unitNormal(nsd);
-      uris_find_closest_face_centroid(uris_obj, xp, nsd, minS, Ec, jM, xb);
-      uris_face_unit_normal(uris_obj, nsd, jM, Ec, unitNormal);
-      const double dotp = (xp - xb) * unitNormal;
-      double sdf_sign = uris_compute_sdf_sign(uris_obj, xp, xb, dotp);
+      if (compute_valve_sdf && uris_point_in_bbox(xp, minb, maxb, nsd)) {
+        double minS = std::numeric_limits<double>::max();
+        int Ec = -1;
+        int jM = -1;
+        Vector<double> xb(nsd);
+        Vector<double> unitNormal(nsd);
+        uris_find_closest_face_centroid(uris_obj, xp, nsd, minS, Ec, jM, xb);
+        uris_face_unit_normal(uris_obj, nsd, jM, Ec, unitNormal);
+        const double dotp = (xp - xb) * unitNormal;
+        const double sdf_sign = uris_compute_sdf_sign(uris_obj, xp, xb, dotp);
+        uris_obj.sdf[ca] = sdf_sign * minS;
 
-      uris_obj.sdf[ca] = sdf_sign * minS;
-
-      if (uris_obj.include_uris_velocity) {
-        Vector<double> interp_valve_vel(nsd);
-        uris_interp_valve_velocity(uris_obj, xp, nsd, jM, Ec, dotp, unitNormal, interp_valve_vel);
-        uris_obj.valve_velocity_fluid.rcol(ca) = interp_valve_vel;
+        if (uris_obj.include_uris_velocity) {
+          Vector<double> interp_valve_vel(nsd);
+          uris_interp_valve_velocity(uris_obj, xp, nsd, jM, Ec, dotp, unitNormal, interp_valve_vel);
+          uris_obj.valve_velocity_fluid.rcol(ca) = interp_valve_vel;
+        }
       }
 
+      if (compute_scaffold_udf && uris_point_in_bbox(xp, minb_scaf, maxb_scaf, nsd)) {
+        double minS_scaf = std::numeric_limits<double>::max();
+        int Ec = -1;
+        Vector<double> xb(nsd);
+        uris_find_closest_mesh_centroid(scaffold_mesh, xp, nsd, minS_scaf, Ec, xb);
+        uris_obj.scaffold_udf[ca] = minS_scaf;
+      }
     } // ca: loop
-    uris_obj.sdf_computed = true;
+
+    if (compute_valve_sdf) {
+      uris_obj.sdf_computed = true;
+    }
+    if (compute_scaffold_udf) {
+      uris_obj.scaffold_udf_computed = true;
+    }
   } // iUris: loop
 
 }
@@ -1264,6 +1333,16 @@ void surface_element_barycenter(const urisType& uris_obj, int jM, int Ec, Vector
   xb = xb / mesh.eNoN;
 }
 
+/// @brief Barycenter of a fixed shell element using mesh coordinates.
+void mesh_element_barycenter(const mshType& mesh, const int Ec, Vector<double>& xb) {
+  xb = 0.0;
+  for (int a = 0; a < mesh.eNoN; a++) {
+    const int Ac = mesh.IEN(a, Ec);
+    xb = xb + mesh.x.rcol(Ac);
+  }
+  xb = xb / mesh.eNoN;
+}
+
 /// @brief Find the closest URIS shell-element centroid to xp; writes that centroid to xb.
 void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<double>& xp,
                                      const int nsd, double& minS, int& Ec, int& jM,
@@ -1287,6 +1366,22 @@ void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<doub
         jM = iM;
         xb = face_centroid;
       }
+    }
+  }
+}
+
+/// @brief Find the closest fixed mesh element centroid to xp.
+void uris_find_closest_mesh_centroid(const mshType& mesh, const Vector<double>& xp,
+                                     const int nsd, double& minS, int& Ec,
+                                     Vector<double>& xb) {
+  Vector<double> elem_centroid(nsd);
+  for (int e = 0; e < mesh.nEl; e++) {
+    mesh_element_barycenter(mesh, e, elem_centroid);
+    const double dS = std::sqrt((xp - elem_centroid) * (xp - elem_centroid));
+    if (dS < minS) {
+      minS = dS;
+      Ec = e;
+      xb = elem_centroid;
     }
   }
 }
@@ -1421,15 +1516,20 @@ void eval_uris_ris_factors_quadrature(const ComMod& com_mod, const mshType& lM, 
   }
 
   Vector<double> dist_srf(nUris);
+  Vector<double> dist_scaffold(nUris);
   Array<double> valve_velocity(com_mod.nsd, nUris);
 
   for (int g = 0; g < fs.nG; g++) {
     dist_srf = 0.0;
+    dist_scaffold = 0.0;
     valve_velocity = 0.0;
     for (int a = 0; a < fs.eNoN; a++) {
       int Ac = lM.IEN(a,e);
       for (int iUris = 0; iUris < nUris; iUris++) {
         dist_srf(iUris) += fs.N(a,g) * std::fabs(com_mod.uris[iUris].sdf(Ac));
+        if (com_mod.uris[iUris].scaffold_flag) {
+          dist_scaffold(iUris) += fs.N(a,g) * std::fabs(com_mod.uris[iUris].scaffold_udf(Ac));
+        }
         if (com_mod.uris[iUris].include_uris_velocity) {
           valve_velocity.rcol(iUris) = valve_velocity.rcol(iUris) +
               fs.N(a,g) * com_mod.uris[iUris].valve_velocity_fluid.rcol(Ac);
@@ -1439,9 +1539,11 @@ void eval_uris_ris_factors_quadrature(const ComMod& com_mod, const mshType& lM, 
 
     double sdf_deps;
     double delta_eps;
+    double delta_eps_scaffold;
     for (int iUris = 0; iUris < nUris; iUris++) {
       sdf_deps = 0.0;
       delta_eps = 0.0;
+      delta_eps_scaffold = 0.0;
       double start_deps, end_deps;
       int n_steps;
       if (com_mod.uris[iUris].clsFlg) {
@@ -1471,7 +1573,17 @@ void eval_uris_ris_factors_quadrature(const ComMod& com_mod, const mshType& lM, 
       if (dist_srf(iUris) < sdf_deps && sdf_deps > 0.0) {
         delta_eps = (1 + cos(consts::pi*dist_srf(iUris)/sdf_deps))/(2*sdf_deps*sdf_deps);
       }
-      uris_factor_total_el(g) += com_mod.uris[iUris].resistance * delta_eps;
+
+      if (com_mod.uris[iUris].scaffold_flag) {
+        // Compute the scaffold resistance factor based on the unsigned distance function (UDF)
+        // The scaffold surface uses the same thickness parameter as the closed valve surface
+        const double scaffold_deps = com_mod.uris[iUris].sdf_deps_close;
+        if (dist_scaffold(iUris) < scaffold_deps && scaffold_deps > 0.0) {
+          delta_eps_scaffold = (1 + cos(consts::pi*dist_scaffold(iUris)/scaffold_deps))/(2*scaffold_deps*scaffold_deps);
+        }
+      }
+
+      uris_factor_total_el(g) += com_mod.uris[iUris].resistance * (delta_eps + delta_eps_scaffold);
 
       if (com_mod.uris[iUris].include_uris_velocity) {
         uris_valve_vel_term_total_el.rcol(g) = uris_valve_vel_term_total_el.rcol(g) 

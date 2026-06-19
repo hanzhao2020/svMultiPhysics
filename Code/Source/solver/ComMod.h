@@ -1553,6 +1553,15 @@ class urisType
     // IB meshes
     std::vector<mshType> msh;
 
+    // Scaffold mesh flag
+    bool scaffold_flag = false;
+    // Scaffold mesh data
+    mshType scaffold_msh;
+    // Unsigned distance function (UDF) for scaffold mesh
+    Vector<double> scaffold_udf;
+    // Flag to indicate if the UDF for scaffold mesh is computed
+    bool scaffold_udf_computed = false;
+
 };
 
 /// @brief The ComMod class duplicates the data structures in the Fortran COMMOD module
