@@ -662,7 +662,13 @@ void uris_read_msh(Simulation* simulation) {
     if (scaffold_file_path != "") {
       uris_obj.scaffold_flag = true;
       uris_obj.scaffold_msh.lShl = true;
-      vtk_xml::read_vtu(scaffold_file_path, uris_obj.scaffold_msh);
+      try {
+        vtk_xml::read_vtu(scaffold_file_path, uris_obj.scaffold_msh);
+      } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "': " + e.what());
+      } catch (...) {
+        throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "'.");
+      }
       // Scale the scaffold mesh coordinates by scF to match the URIS mesh scale
       for (int a = 0; a < uris_obj.scaffold_msh.gnNo; a++) {
         uris_obj.scaffold_msh.x.rcol(a) = uris_obj.scaffold_msh.x.rcol(a) * uris_obj.scF;
@@ -682,7 +688,7 @@ void uris_read_msh(Simulation* simulation) {
         scaffold_mesh.lN(b) = a;
         b++;
       }
-      // Remap msh%gIEN array
+      // Remap scaffold_mesh.gIEN to scaffold_mesh.IEN
       scaffold_mesh.nEl = scaffold_mesh.gnEl;
       scaffold_mesh.IEN.resize(scaffold_mesh.eNoN, scaffold_mesh.nEl);
       for (int e = 0; e < scaffold_mesh.nEl; e++) {
@@ -907,7 +913,7 @@ void uris_read_msh(Simulation* simulation) {
       throw std::runtime_error("Mismatch in uris.tnNo. Correction needed.");
     }
 
-    // Remap msh%gIEN array
+    // Remap mesh.gIEN to mesh.IEN
     for (int iM = 0; iM < uris_obj.nFa; iM++) {
       auto& mesh = uris_obj.msh[iM];
       mesh.nEl = mesh.gnEl;
@@ -1138,12 +1144,10 @@ void uris_calc_sdf(ComMod& com_mod) {
     Vector<double> minb(nsd);
     Vector<double> maxb(nsd);
     if (compute_valve_sdf) {
+      #ifdef debug_uris_calc_sdf
+      dmsg << "Recomputing SDF for " << uris_obj.name;
+      #endif
       uris_obj.sdf = uris_obj.sdf_default;
-
-      if (cm.idcm() == 0) {
-        std::cout << "Recomputing SDF for " << uris_obj.name << std::endl;
-      }
-
       // The valve BBox is 10% larger than the current valve coordinates.
       uris_compute_expanded_bbox(uris_obj.x, nsd, bbox_expansion, minb, maxb);
     }
