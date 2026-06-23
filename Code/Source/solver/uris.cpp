@@ -58,12 +58,14 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
   double volU = 0.0;
   double volD = 0.0;
 
-  // if (cm.mas(cm_mod)) {
-  //   std::cout << "Computing upstream region from SDF -" << meanp_sdf_outer_limit << " to -" 
-  //             << uris_obj.sdf_deps_close << " for: " << uris_obj.name << std::endl;
-  //   std::cout << "Computing downstream region from SDF " << uris_obj.sdf_deps_close 
-  //             << " to " << meanp_sdf_outer_limit << " for: " << uris_obj.name << std::endl;
-  // }
+  # ifdef debug_uris_meanp
+  if (cm.mas(cm_mod)) {
+    dmsg << "Computing upstream region from SDF -" + std::to_string(meanp_sdf_outer_limit) + " to -" 
+              + std::to_string(uris_obj.sdf_deps_close) + " for: " + uris_obj.name << std::endl;
+    dmsg << "Computing downstream region from SDF " + std::to_string(uris_obj.sdf_deps_close) 
+              + " to " + std::to_string(meanp_sdf_outer_limit) + " for: " + uris_obj.name << std::endl;
+  }
+  # endif
 
   // Compute the upstream region: negative sdf side (opposite to valve normal), 
   // outside resistance region
@@ -96,10 +98,12 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
   }
 
   // Print volume messages.
+  # ifdef debug_uris_meanp
   if (cm.mas(cm_mod)) {
-    std::cout << "volume upstream " << volU << " for: " << uris_obj.name << std::endl;
-    std::cout << "volume downstream " << volD << " for: " << uris_obj.name << std::endl;
+    dmsg << "volume upstream " + std::to_string(volU) + " for: " + uris_obj.name << std::endl;
+    dmsg << "volume downstream " + std::to_string(volD) + " for: " + uris_obj.name << std::endl;
   }
+  # endif
 
   double meanPU = 0.0;
   double meanPD = 0.0;
@@ -131,12 +135,14 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
   uris_obj.meanPD = uris_obj.relax_factor * meanPD +
                        (1.0 - uris_obj.relax_factor) * uris_obj.meanPD;
 
+  # ifdef debug_uris_meanp
   if (cm.mas(cm_mod)) {
-    std::cout << "mean P upstream " << meanPU << " " << uris_obj.meanPU
-              << " for: " << uris_obj.name << std::endl;
-    std::cout << "mean P downstream " << meanPD << " " << uris_obj.meanPD
-              << " for: " << uris_obj.name << std::endl;
+    dmsg << "mean P upstream " + std::to_string(meanPU) + " " 
+        + std::to_string(uris_obj.meanPU) + " for: " + uris_obj.name << std::endl;
+    dmsg << "mean P downstream " + std::to_string(meanPD) + " " 
+        + std::to_string(uris_obj.meanPD) + " for: " + uris_obj.name << std::endl;
   }
+  #endif
 
   //  If the uris has passed the closing state
   if (uris_obj.cnt > uris_obj.DxClose.nslices()) {
@@ -144,17 +150,18 @@ void uris_meanp(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
       uris_obj.cnt = 1;
       uris_obj.clsFlg = false;
       com_mod.urisActFlag = true;
+      # ifdef debug_uris_meanp
       if (cm.mas(cm_mod)) {
-        std::cout << "** Set urisCloseFlag to FALSE for: "
-                  << uris_obj.name << std::endl;
+        dmsg << "** Set urisCloseFlag to FALSE for: " + uris_obj.name << std::endl;
       }
+      # endif
     }
   }
+  # ifdef debug_uris_meanp
   if (cm.mas(cm_mod)) {
-    std::cout << "urisCloseFlag is: " << uris_obj.clsFlg << " for: "
-              << uris_obj.name << std::endl;
+    dmsg << "urisCloseFlag is: " + std::to_string(uris_obj.clsFlg) + " for: " + uris_obj.name << std::endl;
   }
-  
+  # endif
 }
 
 /// @brief This subroutine computes the mean velocity in the fluid elements 
@@ -199,9 +206,11 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
   for (int iM = 0; iM < com_mod.nMsh; iM++) {
     volI += all_fun::integ(com_mod, cm_mod, iM, sImm, solutions);
   }
+  # ifdef debug_uris_meanv
   if (cm.mas(cm_mod)) {
-    std::cout << "volume inside " << volI << " for: " << uris_obj.name << std::endl;
+    dmsg << "volume inside " + std::to_string(volI) + " for: " + uris_obj.name << std::endl;
   }
+  # endif
   
   int m = nsd;
   int s = eq[iEq].s;
@@ -225,9 +234,11 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
     meanV += all_fun::integ(com_mod, cm_mod, iM, tmpVNrm, solutions)/volI;
   }
   
+  # ifdef debug_uris_meanv
   if (cm.mas(cm_mod)) {
-    std::cout << "mean velocity: " << meanV << " for: " << uris_obj.name << std::endl;
+    dmsg << "mean velocity: " + std::to_string(meanV) + " for: " + uris_obj.name << std::endl;
   }
+  # endif
 
   // If the uris has passed the open state
   if (uris_obj.cnt > uris_obj.DxOpen.nslices()) {
@@ -235,17 +246,18 @@ void uris_meanv(ComMod& com_mod, CmMod& cm_mod, const int iUris, const SolutionS
       uris_obj.cnt = 1;
       uris_obj.clsFlg = true;
       com_mod.urisActFlag = true;
+      # ifdef debug_uris_meanv
       if (cm.mas(cm_mod)) {
-        std::cout << "** Set urisCloseFlag to TRUE for: " 
-                  << uris_obj.name << std::endl;
+        dmsg << "** Set urisCloseFlag to TRUE for: " + uris_obj.name << std::endl;
       }
+      # endif
     }
   }
+  # ifdef debug_uris_meanv
   if (cm.mas(cm_mod)) {
-    std::cout << "urisCloseFlag is: " << uris_obj.clsFlg << " for: "
-              << uris_obj.name << std::endl;
+    dmsg << "urisCloseFlag is: " + std::to_string(uris_obj.clsFlg) + " for: " + uris_obj.name << std::endl;
   }
-
+  # endif
 }
 
 /// @brief  This subroutine computes the displacement of the immersed 
@@ -609,15 +621,18 @@ void uris_read_msh(Simulation* simulation) {
 
   int nUris = simulation->parameters.URIS_mesh_parameters.size();
   com_mod.nUris = nUris;
-
-  std::cout << "Number of immersed surfaces for uris: " << nUris << std::endl;
+  # ifdef debug_uris_read_msh
+  dmsg << "Number of immersed surfaces for uris: " + std::to_string(nUris) << std::endl;
+  # endif
   uris.resize(nUris);
 
   for (int iUris = 0; iUris < nUris; iUris++) {
     auto param = simulation->parameters.URIS_mesh_parameters[iUris];
     auto& uris_obj = uris[iUris];
     uris_obj.name = param->name();
-    std::cout << "** Reading URIS mesh: " << uris_obj.name << std::endl;
+    # ifdef debug_uris_read_msh
+    dmsg << "** Reading URIS mesh: " + uris_obj.name << std::endl;
+    # endif
 
     uris_obj.scF = param->mesh_scale_factor();
     uris_obj.nFa = param->URIS_face_parameters.size();
@@ -699,10 +714,12 @@ void uris_read_msh(Simulation* simulation) {
         }
       }
       scaffold_mesh.gIEN.clear();
-
-      std::cout << "Scaffold mesh is included for: " << uris_obj.name << std::endl;
-      std::cout << "Scaffold mesh nodes: " << uris_obj.scaffold_msh.gnNo << std::endl;
-      std::cout << "Scaffold mesh elements: " << uris_obj.scaffold_msh.gnEl << std::endl;
+      
+      # ifdef debug_uris_read_msh
+      dmsg << "Scaffold mesh is included for: " + uris_obj.name << std::endl;
+      dmsg << "Scaffold mesh nodes: " + std::to_string(uris_obj.scaffold_msh.gnNo) << std::endl;
+      dmsg << "Scaffold mesh elements: " + std::to_string(uris_obj.scaffold_msh.gnEl) << std::endl;
+      # endif
     }
 
     // uris_obj.tnNo = 0;
@@ -712,7 +729,9 @@ void uris_read_msh(Simulation* simulation) {
       auto& mesh = uris_obj.msh[iM];
       mesh.lShl = true;
       mesh.name = mesh_param->name();
-      std::cout << "-- Reading URIS face: " << mesh.name << std::endl;
+      # ifdef debug_uris_read_msh
+      dmsg << "-- Reading URIS face: " + mesh.name << std::endl;
+      # endif
 
       // Read mesh nodal coordinates and element connectivity.
       uris_read_sv(simulation, mesh, mesh_param);
@@ -731,8 +750,10 @@ void uris_read_msh(Simulation* simulation) {
       //     err = " Failed to identify format of the uris mesh"
       // END IF
 
-      std::cout << "Number of uris nodes: " << mesh.gnNo << std::endl;
-      std::cout << "Number of uris elements: " << mesh.gnEl << std::endl;
+      # ifdef debug_uris_read_msh
+      dmsg << "Number of uris nodes: " + std::to_string(mesh.gnNo) << std::endl;
+      dmsg << "Number of uris elements: " + std::to_string(mesh.gnEl) << std::endl;
+      # endif
 
       // Read valve motion: note that this motion is defined on the 
       // reference configuration 
@@ -929,18 +950,21 @@ void uris_read_msh(Simulation* simulation) {
     }
 
     if (uris_obj.nFa > 0) {
-      std::string msg = "Total number of uris nodes: " + std::to_string(uris_obj.tnNo);
-      std::cout << msg << std::endl;
+      # ifdef debug_uris_read_msh
+      dmsg << "Total number of uris nodes: " + std::to_string(uris_obj.tnNo) << std::endl;
+      # endif
       int total_nel = 0;
       for (int iM = 0; iM < uris_obj.nFa; iM++) {
           total_nel += uris_obj.msh[iM].nEl;
       }
-      msg = "Total number of uris elements: " + std::to_string(total_nel);
-      std::cout << msg << std::endl;
+      # ifdef debug_uris_read_msh
+      dmsg << "Total number of uris elements: " + std::to_string(total_nel) << std::endl;
+      # endif
     }
   }
-  std::cout << "URIS mesh data imported successfully." << std::endl;
-
+  # ifdef debug_uris_read_msh
+  dmsg << "URIS mesh data imported successfully." << std::endl;
+  # endif
 }
 
 /// @brief Write URIS solution to a vtu file
