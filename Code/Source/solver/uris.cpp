@@ -18,9 +18,8 @@
 
 namespace uris { 
 
-void uris_find_closest_mesh_centroid(const mshType& mesh, const Vector<double>& xp,
-                                     const int nsd, double& minS, int& Ec,
-                                     Vector<double>& xb);
+void find_closest_element_centroid(const mshType& mesh, const Vector<double>& xp,
+                                   double& minS, int& element_index, Vector<double>& xb);
 
 /// @brief This subroutine computes the mean pressure and flux on the 
 /// immersed surface 
@@ -576,7 +575,7 @@ void uris_compute_expanded_bbox(const Array<double>& x, const int nsd, const dou
     }
   }
   // Compute the diagonal length of the bounding box for use in degenerate cases where max_val == min_val
-  double diag_length = std::sqrt((max_val - min_val) * (max_val - min_val));
+  double diag_length = utils::norm((max_val - min_val));
 
   for (int i = 0; i < nsd; i++) {
     double extra = 0.0;
@@ -602,6 +601,69 @@ bool uris_point_in_bbox(const Vector<double>& xp, const Vector<double>& minb,
     }
   }
   return true;
+}
+
+/// @brief Load a shell mesh from a VTU file and initialize element metadata.
+void load_shell_mesh_from_file(Simulation* simulation, mshType& mesh,
+                               const std::string& mesh_path,
+                               const bool check_element_ordering) {
+  mesh.lShl = true;
+  vtk_xml::read_vtu(mesh_path, mesh);
+
+  const int nsd = simulation->com_mod.nsd;
+  if (nsd == 1) {
+    throw std::runtime_error("The number of spatial dimensions (" + std::to_string(nsd) +
+        ") is not consistent with the mesh '" + mesh.name + "' which contains shell elements.");
+  }
+
+  nn::select_ele(simulation->com_mod, mesh);
+
+  if (check_element_ordering) {
+    read_msh_ns::check_ien(simulation, mesh);
+  }
+}
+
+/// @brief Load and initialize the optional URIS scaffold mesh.
+void load_scaffold_from_file(Simulation* simulation, urisType& uris_obj,
+                             const std::string& scaffold_file_path) {
+  uris_obj.scaffold_flag = true;
+  auto& scaffold_mesh = uris_obj.scaffold_msh;
+
+  try {
+    load_shell_mesh_from_file(simulation, scaffold_mesh, scaffold_file_path, true);
+  } catch (const std::exception& e) {
+    throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "': " + e.what());
+  } catch (...) {
+    throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "'.");
+  }
+
+  // Scale the scaffold mesh coordinates by scF to match the URIS mesh scale.
+  for (int a = 0; a < scaffold_mesh.gnNo; a++) {
+    scaffold_mesh.x.rcol(a) = scaffold_mesh.x.rcol(a) * uris_obj.scF;
+  }
+
+  int b = 0;
+  scaffold_mesh.nNo = scaffold_mesh.gnNo;
+  scaffold_mesh.gN.resize(scaffold_mesh.nNo);
+  scaffold_mesh.gN = 0;
+  scaffold_mesh.lN.resize(scaffold_mesh.nNo);
+  scaffold_mesh.lN = 0;
+  for (int a = 0; a < scaffold_mesh.nNo; a++) {
+    scaffold_mesh.gN(a) = b;
+    scaffold_mesh.lN(b) = a;
+    b++;
+  }
+
+  scaffold_mesh.nEl = scaffold_mesh.gnEl;
+  scaffold_mesh.IEN.resize(scaffold_mesh.eNoN, scaffold_mesh.nEl);
+  for (int e = 0; e < scaffold_mesh.nEl; e++) {
+    for (int a = 0; a < scaffold_mesh.eNoN; a++) {
+      int Ac = scaffold_mesh.gIEN(a,e);
+      Ac = scaffold_mesh.gN(Ac);
+      scaffold_mesh.IEN(a,e) = Ac;
+    }
+  }
+  scaffold_mesh.gIEN.clear();
 }
 
 /// @brief Read the URIS mesh separately 
@@ -641,7 +703,6 @@ void uris_read_msh(Simulation* simulation) {
     Array<double> gX(0,0);
 
     std::string positive_flow_normal_file_path = param->positive_flow_normal_file_path();
-    // [HZ] Need to read flow normal file (*.dat) into uris_obj.nrm
     // lPtr => lPM%get(fTmp, "Positive flow normal file")
     // fid = fTmp%open()
     // READ (fid,*) uris(iUris)%nrm(:)
@@ -675,45 +736,7 @@ void uris_read_msh(Simulation* simulation) {
     std::string scaffold_file_path = param->scaffold_file_path();
 
     if (scaffold_file_path != "") {
-      uris_obj.scaffold_flag = true;
-      uris_obj.scaffold_msh.lShl = true;
-      try {
-        vtk_xml::read_vtu(scaffold_file_path, uris_obj.scaffold_msh);
-      } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "': " + e.what());
-      } catch (...) {
-        throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "'.");
-      }
-      // Scale the scaffold mesh coordinates by scF to match the URIS mesh scale
-      for (int a = 0; a < uris_obj.scaffold_msh.gnNo; a++) {
-        uris_obj.scaffold_msh.x.rcol(a) = uris_obj.scaffold_msh.x.rcol(a) * uris_obj.scF;
-      }
-      nn::select_ele(com_mod, uris_obj.scaffold_msh);
-      read_msh_ns::check_ien(simulation, uris_obj.scaffold_msh);
-
-      int b = 0;
-      auto& scaffold_mesh = uris_obj.scaffold_msh;
-      scaffold_mesh.nNo = scaffold_mesh.gnNo;
-      scaffold_mesh.gN.resize(scaffold_mesh.nNo);
-      scaffold_mesh.gN = 0;
-      scaffold_mesh.lN.resize(scaffold_mesh.nNo);
-      scaffold_mesh.lN = 0;
-      for (int a = 0; a < scaffold_mesh.nNo; a++) {
-        scaffold_mesh.gN(a) = b;
-        scaffold_mesh.lN(b) = a;
-        b++;
-      }
-      // Remap scaffold_mesh.gIEN to scaffold_mesh.IEN
-      scaffold_mesh.nEl = scaffold_mesh.gnEl;
-      scaffold_mesh.IEN.resize(scaffold_mesh.eNoN, scaffold_mesh.nEl);
-      for (int e = 0; e < scaffold_mesh.nEl; e++) {
-        for (int a = 0; a < scaffold_mesh.eNoN; a++) {
-          int Ac = scaffold_mesh.gIEN(a,e);
-          Ac = scaffold_mesh.gN(Ac);
-          scaffold_mesh.IEN(a,e) = Ac;
-        }
-      }
-      scaffold_mesh.gIEN.clear();
+      load_scaffold_from_file(simulation, uris_obj, scaffold_file_path);
       
       # ifdef debug_uris_read_msh
       dmsg << "Scaffold mesh is included for: " + uris_obj.name << std::endl;
@@ -834,6 +857,23 @@ void uris_read_msh(Simulation* simulation) {
         }
       }
       file_stream.close();
+
+      if (iM > 0) {
+        if (dispNtOpen != uris_obj.DxOpen.nslices()) {
+          throw std::runtime_error(
+              "Mismatch in open motion time steps for URIS mesh '" + uris_obj.name +
+              "', face '" + mesh.name + "'. Expected " +
+              std::to_string(uris_obj.DxOpen.nslices()) + ", got " +
+              std::to_string(dispNtOpen) + ".");
+        }
+        if (dispNtClose != uris_obj.DxClose.nslices()) {
+          throw std::runtime_error(
+              "Mismatch in close motion time steps for URIS mesh '" + uris_obj.name +
+              "', face '" + mesh.name + "'. Expected " +
+              std::to_string(uris_obj.DxClose.nslices()) + ", got " +
+              std::to_string(dispNtClose) + ".");
+        }
+      }
 
       // To scale the mesh, while attaching x to gX
       int a = uris_obj.tnNo + mesh.gnNo;
@@ -1219,7 +1259,7 @@ void uris_calc_sdf(ComMod& com_mod) {
         double minS_scaf = std::numeric_limits<double>::max();
         int Ec = -1;
         Vector<double> xb(nsd);
-        uris_find_closest_mesh_centroid(scaffold_mesh, xp, nsd, minS_scaf, Ec, xb);
+        find_closest_element_centroid(scaffold_mesh, xp, minS_scaf, Ec, xb);
         uris_obj.scaffold_udf[ca] = minS_scaf;
       }
     } // ca: loop
@@ -1243,6 +1283,9 @@ void uris_calc_sdf(ComMod& com_mod) {
 //
 
 void uris_read_sv(Simulation* simulation, mshType& mesh, const URISFaceParameters* mesh_param) {
+  auto mesh_path = mesh_param->face_file_path();
+  auto mesh_name = mesh_param->name();
+
   #define n_dbg_read_sv
   #ifdef dbg_read_sv
     DebugMsg dmsg(__func__, simulation->com_mod.cm.idcm());
@@ -1252,42 +1295,7 @@ void uris_read_sv(Simulation* simulation, mshType& mesh, const URISFaceParameter
     dmsg << "mesh.lShl: " << mesh.lShl;
   #endif
 
-  auto mesh_path = mesh_param->face_file_path();
-  auto mesh_name = mesh_param->name();
-  // Read in volume mesh.
-  vtk_xml::read_vtu(mesh_path, mesh);
-
-  // Check that the input number of spatial dimensions is consistent 
-  // with the types of elements defined for the simulation mesh.
-  //
-  int nsd = simulation->com_mod.nsd;
-  int elem_dim = consts::element_dimension.at(mesh.eType);
-  auto elem_type = consts::element_type_to_string.at(mesh.eType);
-
-  if (mesh.lShl) { 
-    if (nsd == 1) {
-      throw std::runtime_error("The number of spatial dimensions (" + std::to_string(nsd) + 
-          ") is not consistent with the mesh '" + mesh.name + "' which contains shell elements.");
-    }
-
-  } else if (!mesh.lFib) { 
-    if (elem_dim != nsd) {
-      throw std::runtime_error("The number of spatial dimensions (" + std::to_string(nsd) + 
-        ") is not consistent with the mesh '" + mesh.name + "' which contains " + elem_type + " elements.");
-    }
-  }
-
-  // Set mesh element properites for the input element type.
-  nn::select_ele(simulation->com_mod, mesh);
-
-  // Check the mesh element node ordering.
-  //
-  // Note: This may change element node ordering.
-  //
-  auto &com_mod = simulation->get_com_mod();
-  if (com_mod.ichckIEN) {
-      read_msh_ns::check_ien(simulation, mesh);
-  }
+  load_shell_mesh_from_file(simulation, mesh, mesh_path, simulation->get_com_mod().ichckIEN);
 }
 
 
@@ -1376,16 +1384,29 @@ void surface_element_barycenter(const urisType& uris_obj, int jM, int Ec, Vector
 }
 
 /// @brief Barycenter of a fixed shell element using mesh coordinates.
-void mesh_element_barycenter(const mshType& mesh, const int Ec, Vector<double>& xb) {
+Vector<double> mesh_element_barycenter(const mshType& mesh, const int element_index) {
+  Vector<double> xb(mesh.x.nrows());
   xb = 0.0;
   for (int a = 0; a < mesh.eNoN; a++) {
-    const int Ac = mesh.IEN(a, Ec);
+    const int Ac = mesh.IEN(a, element_index);
     xb = xb + mesh.x.rcol(Ac);
   }
   xb = xb / mesh.eNoN;
+  return xb;
 }
 
-/// @brief Find the closest URIS shell-element centroid to xp; writes that centroid to xb.
+/// @brief Find the closest URIS shell element centroid to a point.
+///
+/// @param[in] uris_obj URIS object containing the shell meshes and current
+/// valve coordinates.
+/// @param[in] xp Background mesh point used to search for the nearest
+/// URIS shell element centroid.
+/// @param[in] nsd Number of spatial dimensions.
+/// @param[in,out] minS Current minimum centroid distance; updated when a
+/// closer centroid is found.
+/// @param[out] Ec Element index of the closest shell element centroid.
+/// @param[out] jM Mesh index containing the closest shell element centroid.
+/// @param[out] xb Coordinates of the closest shell element centroid.
 void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<double>& xp,
                                      const int nsd, double& minS, int& Ec, int& jM,
                                      Vector<double>& xb) {
@@ -1401,7 +1422,7 @@ void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<doub
     const auto& mesh = uris_obj.msh[iM];
     for (int e = 0; e < mesh.nEl; e++) {
       surface_element_barycenter(uris_obj, iM, e, face_centroid);
-      const double dS = std::sqrt((xp - face_centroid) * (xp - face_centroid));
+      const double dS = utils::norm((xp - face_centroid));
       if (dS < minS) {
         minS = dS;
         Ec = e;
@@ -1412,17 +1433,23 @@ void uris_find_closest_face_centroid(const urisType& uris_obj, const Vector<doub
   }
 }
 
-/// @brief Find the closest fixed mesh element centroid to xp.
-void uris_find_closest_mesh_centroid(const mshType& mesh, const Vector<double>& xp,
-                                     const int nsd, double& minS, int& Ec,
-                                     Vector<double>& xb) {
-  Vector<double> elem_centroid(nsd);
+/// @brief Find the closest fixed mesh element centroid to a point.
+///
+/// @param[in] mesh Mesh containing the elements to search.
+/// @param[in] xp Background mesh point used to search for the nearest
+/// fixed mesh element centroid.
+/// @param[in,out] minS Current minimum centroid distance; updated when a
+/// closer centroid is found.
+/// @param[out] element_index Index of the element with the closest centroid.
+/// @param[out] xb Coordinates of the closest element centroid.
+void find_closest_element_centroid(const mshType& mesh, const Vector<double>& xp,
+                                   double& minS, int& element_index, Vector<double>& xb) {
   for (int e = 0; e < mesh.nEl; e++) {
-    mesh_element_barycenter(mesh, e, elem_centroid);
-    const double dS = std::sqrt((xp - elem_centroid) * (xp - elem_centroid));
+    const Vector<double> elem_centroid = mesh_element_barycenter(mesh, e);
+    const double dS = utils::norm((xp - elem_centroid));
     if (dS < minS) {
       minS = dS;
-      Ec = e;
+      element_index = e;
       xb = elem_centroid;
     }
   }
