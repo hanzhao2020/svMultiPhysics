@@ -624,22 +624,25 @@ void load_shell_mesh_from_file(Simulation* simulation, mshType& mesh,
 }
 
 /// @brief Load and initialize the optional URIS scaffold mesh.
-void load_scaffold_from_file(Simulation* simulation, urisType& uris_obj,
-                             const std::string& scaffold_file_path) {
-  uris_obj.scaffold_flag = true;
-  auto& scaffold_mesh = uris_obj.scaffold_msh;
+///
+/// @param uris_name Name used only to identify the URIS object in error messages.
+mshType load_scaffold_from_file(Simulation* simulation,
+                                const std::string& scaffold_file_path,
+                                const std::string& uris_name,
+                                const double scaffold_scale) {
+  mshType scaffold_mesh;
 
   try {
     load_shell_mesh_from_file(simulation, scaffold_mesh, scaffold_file_path, true);
   } catch (const std::exception& e) {
-    throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "': " + e.what());
+    throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_name + "': " + e.what());
   } catch (...) {
-    throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_obj.name + "'.");
+    throw std::runtime_error("Failed to read URIS scaffold mesh for '" + uris_name + "'.");
   }
 
   // Scale the scaffold mesh coordinates by scF to match the URIS mesh scale.
   for (int a = 0; a < scaffold_mesh.gnNo; a++) {
-    scaffold_mesh.x.rcol(a) = scaffold_mesh.x.rcol(a) * uris_obj.scF;
+    scaffold_mesh.x.rcol(a) = scaffold_mesh.x.rcol(a) * scaffold_scale;
   }
 
   int b = 0;
@@ -664,6 +667,8 @@ void load_scaffold_from_file(Simulation* simulation, urisType& uris_obj,
     }
   }
   scaffold_mesh.gIEN.clear();
+
+  return scaffold_mesh;
 }
 
 /// @brief Read the URIS mesh separately 
@@ -736,7 +741,9 @@ void uris_read_msh(Simulation* simulation) {
     std::string scaffold_file_path = param->scaffold_file_path();
 
     if (scaffold_file_path != "") {
-      load_scaffold_from_file(simulation, uris_obj, scaffold_file_path);
+      uris_obj.scaffold_flag = true;
+      uris_obj.scaffold_msh = load_scaffold_from_file(simulation, scaffold_file_path,
+          uris_obj.name, uris_obj.scF);
       
       # ifdef debug_uris_read_msh
       dmsg << "Scaffold mesh is included for: " + uris_obj.name << std::endl;
