@@ -6,6 +6,7 @@
 #include "lhsa.h"
 
 #include "consts.h"
+#include "ib.h"
 #include "utils.h"
 
 namespace lhsa_ns {
@@ -193,6 +194,10 @@ void lhsa(Simulation* simulation, int& nnz)
         }
       }
     }
+  }
+
+  if (com_mod.ibFlag) {
+    ib::add_ifem_coupling_to_lhs_graph(com_mod, mnnzeic, uInd);
   }
 
   // Treat shells with triangular elements here
@@ -408,5 +413,4 @@ void resiz(const int tnNo, int& mnnzeic, Array<int>& uInd)
 }
 
 };
-
 

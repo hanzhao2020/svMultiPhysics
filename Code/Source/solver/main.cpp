@@ -29,6 +29,7 @@
 #include "vtk_xml.h"
 #include "ris.h"
 #include "uris.h"
+#include "ib.h"
 
 #include <stdlib.h>
 #include <iomanip>
@@ -634,8 +635,9 @@ int main(int argc, char *argv[])
     #ifdef debug_main
     dmsg << "Read files " << " ... ";
     #endif
+
     read_files(simulation, file_name);
-    
+
     // Distribute data to processors.
     #ifdef debug_main
     dmsg << "Distribute data to processors " << " ... ";

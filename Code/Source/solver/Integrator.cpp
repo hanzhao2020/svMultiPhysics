@@ -10,6 +10,7 @@
 #include "eq_assem.h"
 #include "fs.h"
 #include "ls.h"
+#include "lhsa.h"
 #include "nn.h"
 #include "output.h"
 #include "post.h"
@@ -17,6 +18,7 @@
 #include "set_bc.h"
 #include "ustruct.h"
 #include "utils.h"
+#include "ib.h"
 
 #include <algorithm>
 #include <iostream>
@@ -108,6 +110,12 @@ bool Integrator::step() {
       com_mod.Kd = 0.0;
     }
 
+    if (eq.phys == Equation_immersed_FSI) {
+      if (ib::build_ifem_coupling_operator(com_mod, solutions_)) {
+        rebuild_immersed_fsi_linear_system_graph();
+      }
+    }
+
     // Allocate com_mod.R and com_mod.Val arrays
     allocate_linear_system(eq);
 
@@ -137,7 +145,7 @@ bool Integrator::step() {
     }
 
     // Set the residual of the continuity equation to 0 on edge nodes
-    if (std::set<EquationType>{Equation_stokes, Equation_fluid, Equation_ustruct, Equation_FSI}.count(eq.phys) != 0) {
+    if (std::set<EquationType>{Equation_stokes, Equation_fluid, Equation_ustruct, Equation_FSI, Equation_immersed_FSI}.count(eq.phys) != 0) {
       #ifdef debug_integrator_step
       dmsg << "thood_val_rc ..." << std::endl;
       #endif
@@ -150,11 +158,19 @@ bool Integrator::step() {
     #endif
     set_bc::set_bc_undef_neu(com_mod);
 
+    if (eq.phys == Equation_immersed_FSI) {
+      ib::apply_ifem_reduced_solid_rows(com_mod);
+    }
+
     // Update residual and increment arrays
     update_residual_arrays(eq);
 
     // Solve equation
     solve_linear_system();
+
+    if (eq.phys == Equation_immersed_FSI) {
+      ib::project_fluid_increment_to_solid(com_mod);
+    }
 
     // Solution is obtained, now updating (Corrector) and check for convergence
     bool all_converged = corrector_and_check_convergence();
@@ -166,6 +182,10 @@ bool Integrator::step() {
       dmsg << "iEqOld: " << iEqOld + 1;
       #endif
       return true;
+    }
+
+    if (eq.phys == Equation_immersed_FSI) {
+      ib::project_fluid_velocity_to_solid(com_mod, solutions_);
     }
 
     output::output_result(simulation_, com_mod.timeP, 2, iEqOld);
@@ -206,6 +226,52 @@ void Integrator::allocate_linear_system(eqType& eq) {
   #ifdef debug_integrator_step
   simulation_->com_mod.Val.write("Val_alloc" + istr_);
   #endif
+}
+
+//------------------------
+// rebuild_immersed_fsi_linear_system_graph
+//------------------------
+void Integrator::rebuild_immersed_fsi_linear_system_graph()
+{
+  auto& com_mod = simulation_->com_mod;
+  auto& lhs = com_mod.lhs;
+
+  if (lhs.commu.nTasks != 1) {
+    throw std::runtime_error("[Integrator::rebuild_immersed_fsi_linear_system_graph] "
+        "Adaptive IFEM sparse graph rebuild is currently implemented only for serial FSILS runs.");
+  }
+
+  int nnz = 0;
+  lhsa_ns::lhsa(simulation_, nnz);
+
+  lhs.nnz = nnz;
+  lhs.nNo = com_mod.tnNo;
+  lhs.gnNo = com_mod.gtnNo;
+  lhs.mynNo = com_mod.tnNo;
+  lhs.colPtr.resize(nnz);
+  lhs.rowPtr.resize(2,com_mod.tnNo);
+  lhs.diagPtr.resize(com_mod.tnNo);
+  lhs.map.resize(com_mod.tnNo);
+
+  for (int i = 0; i < nnz; i++) {
+    lhs.colPtr(i) = com_mod.colPtr(i);
+  }
+
+  for (int a = 0; a < com_mod.tnNo; a++) {
+    const int row_start = com_mod.rowPtr(a);
+    const int row_end = com_mod.rowPtr(a+1) - 1;
+    lhs.rowPtr(0,a) = row_start;
+    lhs.rowPtr(1,a) = row_end;
+    lhs.map(a) = a;
+
+    lhs.diagPtr(a) = row_start;
+    for (int ptr = row_start; ptr <= row_end; ptr++) {
+      if (com_mod.colPtr(ptr) == a) {
+        lhs.diagPtr(a) = ptr;
+        break;
+      }
+    }
+  }
 }
 
 //------------------------
@@ -866,7 +932,7 @@ void Integrator::corrector()
     }
   }
 
-  if (std::set<EquationType>{Equation_stokes, Equation_fluid, Equation_ustruct, Equation_FSI}.count(eq.phys) != 0) {
+  if (std::set<EquationType>{Equation_stokes, Equation_fluid, Equation_ustruct, Equation_FSI, Equation_immersed_FSI}.count(eq.phys) != 0) {
     corrector_taylor_hood();
   }
 

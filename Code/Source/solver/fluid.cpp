@@ -6,6 +6,7 @@
 #include "all_fun.h"
 #include "consts.h"
 #include "fs.h"
+#include "ib.h"
 #include "lhsa.h"
 #include "nn.h"
 #include "utils.h"
@@ -13,10 +14,45 @@
 #include "uris.h"
 
 #include <array>
+#include <cmath>
 #include <iomanip>
 #include <math.h>
 
 namespace fluid {
+
+namespace {
+
+double element_length_from_metric(const Array<double>& Kxi, const int nsd)
+{
+  double trace = 0.0;
+  for (int i = 0; i < nsd; i++) {
+    trace += Kxi(i,i);
+  }
+
+  if (trace <= 0.0) {
+    return 0.0;
+  }
+
+  return std::sqrt(static_cast<double>(nsd) / trace);
+}
+
+
+Vector<double> quadrature_point(const int nsd, const Vector<double>& N, const Array<double>& x)
+{
+  Vector<double> xq(nsd);
+  xq = 0.0;
+
+  for (int a = 0; a < N.size(); a++) {
+    for (int i = 0; i < nsd; i++) {
+      xq(i) += N(a) * x(i,a);
+    }
+  }
+
+  return xq;
+}
+
+}
+
 
 void b_fluid(ComMod& com_mod, const int eNoN, const double w, const Vector<double>& N, const Vector<double>& y, 
     const double h, const Vector<double>& nV, Array<double>& lR, Array3<double>& lK)
@@ -552,8 +588,12 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
     if (cPhys != EquationType::phys_fluid) {
       continue;
     }
-    
-    double K_inverse_darcy_permeability = eq.dmn[cDmn].prop.at(PhysicalProperyType::inverse_darcy_permeability);
+
+    double K_inverse_darcy_permeability = 0.0;
+    auto inverse_darcy_permeability = eq.dmn[cDmn].prop.find(PhysicalProperyType::inverse_darcy_permeability);
+    if (inverse_darcy_permeability != eq.dmn[cDmn].prop.end()) {
+      K_inverse_darcy_permeability = inverse_darcy_permeability->second;
+    }
 
     //  Update shape functions for NURBS
     if (lM.eType == ElementType::NRB) {
@@ -574,6 +614,8 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
         yl(i,a) = Yg(i,Ac);
       }
     }
+
+    // std::cout << "[construct_fluid] check point 5" << std::endl;
 
     // Initialize residual and tangents
     lR = 0.0;
@@ -667,15 +709,21 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
           urisFactorTotal = urisFactorTotalEl(g);
           urisValveVelTermTotal = urisValveVelTermTotalEl.rcol(g);
         }
+        const double h = element_length_from_metric(ksix, nsd);
+        const auto xq = quadrature_point(nsd, N0, xwl);
+        const double ib_vms_s = ib::ib_vms_stabilization_s(com_mod, xq, h);
         fluid_3d_m(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, 
             Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, 
-            urisFactorTotal, urisValveVelTermTotal);
+            urisFactorTotal, urisValveVelTermTotal, ib_vms_s);
 
       } else if (nsd == 2) {
         auto N0 = fs[0].N.rcol(g); 
         auto N1 = fs[1].N.rcol(g); 
+        const double h = element_length_from_metric(ksix, nsd);
+        const auto xq = quadrature_point(nsd, N0, xwl);
+        const double ib_vms_s = ib::ib_vms_stabilization_s(com_mod, xq, h);
         fluid_2d_m(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, 
-            Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability);
+            Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, ib_vms_s);
       }
     } // g: loop
 
@@ -733,20 +781,28 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
           urisFactorTotal = urisFactorTotalEl(g);
           urisValveVelTermTotal = urisValveVelTermTotalEl.rcol(g);
         }
+        const double h = element_length_from_metric(ksix, nsd);
+        const auto xq = quadrature_point(nsd, N1, xql);
+        const double ib_vms_s = ib::ib_vms_stabilization_s(com_mod, xq, h);
         fluid_3d_c(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, 
               Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, 
-              urisFactorTotal, urisValveVelTermTotal);
+              urisFactorTotal, urisValveVelTermTotal, ib_vms_s);
 
       } else if (nsd == 2) {
         auto N0 = fs[0].N.rcol(g); 
         auto N1 = fs[1].N.rcol(g); 
-        fluid_2d_c(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, 
-              Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability);
+        const double h = element_length_from_metric(ksix, nsd);
+        const auto xq = quadrature_point(nsd, N1, xql);
+        const double ib_vms_s = ib::ib_vms_stabilization_s(com_mod, xq, h);
+        fluid_2d_c(com_mod, vmsStab, fs[0].eNoN, fs[1].eNoN, w, ksix, N0, N1, Nwx, Nqx, Nwxx, al, yl, bfl, lR, lK, K_inverse_darcy_permeability, ib_vms_s);
       }
 
     } // g: loop
 
+
     eq.linear_algebra->assemble(com_mod, eNoN, ptr, lK, lR);
+
+
     if (com_mod.risFlag) {
       if (!std::all_of(com_mod.ris.clsFlg.begin(), com_mod.ris.clsFlg.end(), [](bool v) { return v; })) {
         ris::doassem_ris(com_mod, eNoN, ptr, lK, lR);
@@ -766,7 +822,8 @@ void construct_fluid(ComMod& com_mod, const mshType& lM, const SolutionStates& s
 void fluid_2d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int eNoNq, const double w, 
     const Array<double>& Kxi, const Vector<double>& Nw, const Vector<double>& Nq, const Array<double>& Nwx, 
     const Array<double>& Nqx, const Array<double>& Nwxx, const Array<double>& al, const Array<double>& yl, 
-    const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability)
+    const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability,
+    const double ib_vms_s)
 {
   using namespace consts;
 
@@ -997,7 +1054,7 @@ void fluid_2d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
     double kS = Kxi(0,0)*Kxi(0,0) + Kxi(1,0)*Kxi(1,0) + Kxi(0,1)*Kxi(0,1) + Kxi(1,1)*Kxi(1,1);
 
     kS = ctC * kS * pow(mu/rho,2.0);
-    tauM = 1.0 / (rho * sqrt( kT + kU + kS ));
+    tauM = 1.0 / (rho * sqrt(ib_vms_s * (kT + kU + kS)));
 
     // rV[i] = ith component of (acceleration + convective term - body force)
     Vector<double> rV(2);
@@ -1086,7 +1143,8 @@ void fluid_2d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
 void fluid_2d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int eNoNq, const double w, 
     const Array<double>& Kxi, const Vector<double>& Nw, const Vector<double>& Nq, const Array<double>& Nwx, 
     const Array<double>& Nqx, const Array<double>& Nwxx, const Array<double>& al, const Array<double>& yl, 
-    const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability)
+    const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability,
+    const double ib_vms_s)
 {
   using namespace consts;
 
@@ -1287,7 +1345,7 @@ void fluid_2d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
   kS = ctC * kS * pow(mu/rho,2.0);
   
   // tauM = tau_M / rho = tau_SUPS / rho
-  double tauM = 1.0 / (rho * sqrt( kT + kU + kS ));
+  double tauM = 1.0 / (rho * sqrt(ib_vms_s * (kT + kU + kS)));
 
   // rV[i] = ith component of (acceleration + convective term - body force)
   Vector<double> rV(2);
@@ -1444,7 +1502,7 @@ void fluid_3d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
     const Array<double>& Kxi, const Vector<double>& Nw, const Vector<double>& Nq, const Array<double>& Nwx, 
     const Array<double>& Nqx, const Array<double>& Nwxx, const Array<double>& al, const Array<double>& yl, 
     const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability, 
-    const double urisFactorTotal, const Vector<double>& urisValveVelTermTotal)
+    const double urisFactorTotal, const Vector<double>& urisValveVelTermTotal, const double ib_vms_s)
 {
   #define n_debug_fluid3d_c
   #ifdef debug_fluid3d_c
@@ -1670,7 +1728,7 @@ void fluid_3d_c(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
               + Kxi(0,2)*Kxi(0,2) + Kxi(1,2)*Kxi(1,2) + Kxi(2,2)*Kxi(2,2);
 
     kS = ctC * kS * pow(mu/rho,2.0);
-    tauM = 1.0 / (rho * sqrt( kT + kU + kS ));
+    tauM = 1.0 / (rho * sqrt(ib_vms_s * (kT + kU + kS)));
 
     double rV[3];
     rV[0] = ud[0] + u[0]*ux[0][0] + u[1]*ux[1][0] + u[2]*ux[2][0];
@@ -1769,7 +1827,7 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
     const Array<double>& Kxi, const Vector<double>& Nw, const Vector<double>& Nq, const Array<double>& Nwx,
     const Array<double>& Nqx, const Array<double>& Nwxx, const Array<double>& al, const Array<double>& yl,
     const Array<double>& bfl, Array<double>& lR, Array3<double>& lK, double K_inverse_darcy_permeability, 
-    const double urisFactorTotal, const Vector<double>& urisValveVelTermTotal)
+    const double urisFactorTotal, const Vector<double>& urisValveVelTermTotal, const double ib_vms_s)
 {
   #define n_debug_fluid_3d_m
   #ifdef debug_fluid_3d_m
@@ -2015,7 +2073,7 @@ void fluid_3d_m(ComMod& com_mod, const int vmsFlag, const int eNoNw, const int e
             + Kxi(0,1)*Kxi(0,1) + Kxi(1,1)*Kxi(1,1) + Kxi(2,1)*Kxi(2,1)
             + Kxi(0,2)*Kxi(0,2) + Kxi(1,2)*Kxi(1,2) + Kxi(2,2)*Kxi(2,2);
   kS = ctC * kS * pow(mu/rho,2.0);
-  double tauM = 1.0 / (rho * sqrt( kT + kU + kS ));
+  double tauM = 1.0 / (rho * sqrt(ib_vms_s * (kT + kU + kS)));
 
   #ifdef debug_fluid_3d_m
   dmsg << "kT: " << kT;

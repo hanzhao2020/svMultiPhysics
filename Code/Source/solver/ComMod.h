@@ -1203,6 +1203,16 @@ class eqType
     /// @brief Explicit geometry coupling
     bool expl_geom_cpl = false;
 
+    /// @brief Immersed-method equation options.
+    bool immersed_method = false;
+    std::string immersed_method_type;
+    std::string immersed_coupling_method;
+    std::string immersed_interpolation;
+    int immersed_fluid_domain = -1;
+    int immersed_solid_domain = -1;
+    double immersed_vms_stabilization_s = 1.0;
+    double immersed_vms_stabilization_width = 1.0;
+
     /// @brief Body force associated with this equation
     std::vector<bfType> bf;
 };
@@ -1304,6 +1314,26 @@ class ibCommType
     Vector<int> gE;
 };
 
+/// @brief One finite-element interpolation row for immersed FSI coupling.
+class ifemCouplingType
+{
+  public:
+    /// @brief Immersed solid node index.
+    int ibNode = -1;
+
+    /// @brief Background fluid mesh index.
+    int fluidMesh = -1;
+
+    /// @brief Background fluid element index.
+    int fluidElem = -1;
+
+    /// @brief Background fluid global node IDs for this interpolation row.
+    Vector<int> fluidNodes;
+
+    /// @brief Fluid shape-function values evaluated at the immersed point.
+    Vector<double> N;
+};
+
 
 /// @brief Immersed Boundary (IB) data type
 //
@@ -1344,6 +1374,9 @@ class ibType
 
     /// @brief IB Domain ID
     Vector<int> dmnID;
+
+    /// @brief Original global solution node ID for each immersed node.
+    Vector<int> gN;
 
     /// @brief Row pointer (for sparse LHS matrix storage)
     Vector<int> rowPtr;
@@ -1392,6 +1425,9 @@ class ibType
 
     /// @brief LHS tangent matrix for displacement
     Array<double> Ku;
+
+    /// @brief IFEM coupling operator rows for velocity interpolation and force spreading.
+    std::vector<ifemCouplingType> ifemCoupling;
 
     /// @brief DERIVED class VARIABLES IB meshes;
     std::vector<mshType> msh;

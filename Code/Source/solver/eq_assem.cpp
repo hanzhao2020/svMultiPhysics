@@ -21,6 +21,7 @@
 #include "stokes.h"
 #include "sv_struct.h"
 #include "ustruct.h"
+#include "ib.h"
 
 #include <fsils_api.hpp>
 
@@ -444,6 +445,10 @@ void global_eq_assem(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const 
       stokes::construct_stokes(com_mod, lM, solutions);
     break;
 
+    case EquationType::phys_immersed_FSI:
+      ib::construct_immersed_fsi(com_mod, cep_mod, lM, solutions);
+    break;
+
     default:
       throw std::runtime_error("[global_eq_assem] Undefined physics selection for assembly");
   } 
@@ -455,5 +460,3 @@ void global_eq_assem(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const 
 }
 
 };
-
-

@@ -215,6 +215,7 @@ set(CSRCS
   vtk_xml_parser.h vtk_xml_parser.cpp
   ris.h ris.cpp
   uris.h uris.cpp
+  ib.h ib.cpp
 
   CepMod.h CepMod.cpp
   ChnlMod.h ChnlMod.cpp

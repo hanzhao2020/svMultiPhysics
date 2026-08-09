@@ -137,7 +137,7 @@ void calc_der_cpl_bc(ComMod& com_mod, const CmMod& cm_mod, const SolutionStates&
         }
         // If fluid, FSI, or CMM, use reference configuration to compute flowrate integral
         // Note that for FSI, mvMsh will modify geometry in gnnb()
-        else if ((cPhys == EquationType::phys_fluid) || (cPhys == EquationType::phys_FSI) || (cPhys == EquationType::phys_CMM)) {
+        else if ((cPhys == EquationType::phys_fluid) || (cPhys == EquationType::phys_FSI) || (cPhys == EquationType::phys_CMM) || (cPhys == EquationType::phys_immersed_FSI)) {
           cfg_o = MechanicalConfigurationType::reference;
           cfg_n = MechanicalConfigurationType::reference;
         }
@@ -818,7 +818,7 @@ void set_bc_cpl(ComMod& com_mod, CmMod& cm_mod, const SolutionStates& solutions)
           }
           // If fluid, FSI, or CMM, use reference configuration to compute flowrate integral
           // Note that for FSI, mvMsh will modify geometry in gnnb()
-          else if ((cPhys == EquationType::phys_fluid) || (cPhys == EquationType::phys_FSI) || (cPhys == EquationType::phys_CMM)) {
+          else if ((cPhys == EquationType::phys_fluid) || (cPhys == EquationType::phys_FSI) || (cPhys == EquationType::phys_CMM) || (cPhys == EquationType::phys_immersed_FSI)) {
             cfg_o = MechanicalConfigurationType::reference;
             cfg_n = MechanicalConfigurationType::reference;
           }

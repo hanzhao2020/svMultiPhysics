@@ -646,6 +646,94 @@ void BoundaryConditionParameters::set_values(tinyxml2::XMLElement *xml_elem) {
 }
 
 //////////////////////////////////////////////////////////
+//              ImmersedMethodParameters                //
+//////////////////////////////////////////////////////////
+
+const std::string ImmersedMethodParameters::xml_element_name_ = "Immersed_method";
+
+ImmersedMethodParameters::ImmersedMethodParameters()
+{
+  set_xml_element_name(xml_element_name_);
+
+  bool required = true;
+  type = Parameter<std::string>("type", "", required);
+
+  set_parameter("Background_fluid_domain", 0, !required, background_fluid_domain);
+  set_parameter("Immersed_solid_domain", 1, !required, immersed_solid_domain);
+  set_parameter("Interpolation", "FE", !required, interpolation);
+  set_parameter("Coupling_method", "monolithic", !required, coupling_method);
+  set_parameter("VMS_stabilization_s", 1.0, !required, vms_stabilization_s);
+  set_parameter("VMS_stabilization_width", 1.0, !required, vms_stabilization_width);
+}
+
+void ImmersedMethodParameters::print_parameters()
+{
+  if (!value_set) {
+    return;
+  }
+
+  std::cout << std::endl;
+  std::cout << "--------------------------" << std::endl;
+  std::cout << "Immersed Method Parameters" << std::endl;
+  std::cout << "--------------------------" << std::endl;
+  std::cout << type.name() << ": " << type.value() << std::endl;
+
+  auto params_name_value = get_parameter_list();
+  for (auto& [ key, value ] : params_name_value) {
+    std::cout << key << ": " << value << std::endl;
+  }
+}
+
+void ImmersedMethodParameters::set_values(tinyxml2::XMLElement* xml_elem)
+{
+  using namespace tinyxml2;
+  value_set = true;
+
+  const char* method_type = require_xml_attribute(xml_elem, "type");
+  type.set(std::string(method_type));
+
+  auto item = xml_elem->FirstChildElement();
+  while (item != nullptr) {
+    auto name = std::string(item->Value());
+
+    if (name == coupling_method.name()) {
+      const char* coupling_type = item->Attribute("type");
+      if (coupling_type != nullptr) {
+        coupling_method.set(std::string(coupling_type));
+      } else if (item->GetText() != nullptr) {
+        coupling_method.set(std::string(item->GetText()));
+      } else {
+        svmp::raise<svmp::ParseException>(
+            "Immersed_method requires type attribute.");
+      }
+    } else if (name == interpolation.name()) {
+      const char* interpolation_type = item->Attribute("type");
+      if (interpolation_type != nullptr) {
+        interpolation.set(std::string(interpolation_type));
+      } else if (item->GetText() != nullptr) {
+        interpolation.set(std::string(item->GetText()));
+      } else {
+        svmp::raise<svmp::ParseException>(
+            "Interpolation requires a value or type attribute.");
+      }
+    } else if (item->GetText() != nullptr) {
+      try {
+        set_parameter_value(name, item->GetText());
+      } catch (const std::bad_function_call& exception) {
+        svmp::raise<svmp::ParseException>(
+            "Unknown " + xml_element_name_ + " XML element '" + name + "'.");
+      }
+
+    } else {
+      svmp::raise<svmp::ParseException>(
+          "Unknown " + xml_element_name_ + " XML element '" + name + "'.");
+    }
+
+    item = item->NextSiblingElement();
+  }
+}
+
+//////////////////////////////////////////////////////////
 //            ConstitutiveModelParameters               //
 //////////////////////////////////////////////////////////
 
@@ -2628,7 +2716,9 @@ void EquationParameters::print_parameters() {
     }
   }
 
-  // stimulus.print_parameters();
+  immersed_method.print_parameters();
+
+  //stimulus.print_parameters();
 
   for (auto &output : outputs) {
     output->print_parameters();
@@ -2687,6 +2777,9 @@ void EquationParameters::set_values(tinyxml2::XMLElement *eq_elem,
 
     } else if (name == CoupleGenBCParameters::xml_element_name_) {
       couple_to_genBC.set_values(item);
+
+    } else if (name == ImmersedMethodParameters::xml_element_name_) {
+      immersed_method.set_values(item);
 
     } else if (name == svZeroDSolverInterfaceParameters::xml_element_name_) {
       svzerodsolver_interface_parameters.set_values(item);

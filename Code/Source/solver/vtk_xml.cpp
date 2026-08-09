@@ -11,9 +11,12 @@
 #include "consts.h"
 #include "post.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <stdio.h>
+#include <string>
+#include <vector>
 
 #include <vtkUnstructuredGrid.h>
 #include <vtkSmartPointer.h>
@@ -23,6 +26,189 @@ namespace vtk_xml {
 
 #define dbg_vtk_xml
 #define n_dbg_read_vtu_pdata 
+
+namespace {
+
+enum class ImmersedOutputPart {
+  fluid,
+  solid
+};
+
+bool equation_uses_immersed_fsi(const ComMod& com_mod)
+{
+  for (const auto& eq : com_mod.eq) {
+    if (eq.phys == consts::EquationType::phys_immersed_FSI || eq.immersed_method) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int immersed_domain(const ComMod& com_mod, const ImmersedOutputPart part)
+{
+  for (const auto& eq : com_mod.eq) {
+    if (eq.phys == consts::EquationType::phys_immersed_FSI || eq.immersed_method) {
+      return part == ImmersedOutputPart::fluid ? eq.immersed_fluid_domain : eq.immersed_solid_domain;
+    }
+  }
+  return -1;
+}
+
+bool element_has_domain(const mshType& mesh, const int elem, const int domain)
+{
+  const int max_domain_bits = 8 * static_cast<int>(sizeof(unsigned long));
+  if (domain < 0 || domain >= max_domain_bits || elem < 0 || elem >= mesh.eId.size()) {
+    return false;
+  }
+  return (static_cast<unsigned long>(mesh.eId(elem)) & (1UL << domain)) != 0UL;
+}
+
+bool mesh_has_domain(const mshType& mesh, const int domain)
+{
+  for (int e = 0; e < mesh.nEl; e++) {
+    if (element_has_domain(mesh, e, domain)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool output_field_for_immersed_part(const std::string& name, const ImmersedOutputPart part)
+{
+  if (part == ImmersedOutputPart::fluid) {
+    static const std::vector<std::string> fluid_fields = {
+      "Acceleration",
+      "Divergence",
+      "IBLANK",
+      "Pressure",
+      "Velocity",
+      "Viscosity",
+      "Vorticity",
+      "Vortex",
+      "WSS"
+    };
+    return std::find(fluid_fields.begin(), fluid_fields.end(), name) != fluid_fields.end();
+  }
+
+  static const std::vector<std::string> solid_fields = {
+    "Acceleration",
+    "Cauchy_stress",
+    "Def_grad",
+    "Displacement",
+    "Fiber_alignment",
+    "Fiber_direction1",
+    "Fiber_direction2",
+    "Fiber_direction3",
+    "Fiber_shortening",
+    "Jacobian",
+    "Strain",
+    "Strain_invariants",
+    "Stress",
+    "Velocity",
+    "VonMises_stress"
+  };
+  return std::find(solid_fields.begin(), solid_fields.end(), name) != solid_fields.end();
+}
+
+void write_single_mesh_vtu(const ComMod& com_mod, const mshType& mesh, const dataType& data,
+    const std::vector<std::string>& outNames, const std::vector<int>& outS, const int nOut,
+    const std::string& file_name, const ImmersedOutputPart part, const int output_domain)
+{
+  (void)mesh;
+
+  if (data.nNo == 0 || data.nEl == 0) {
+    return;
+  }
+
+  const int nsd = com_mod.nsd;
+  auto vtk_writer = VtkData::create_writer(file_name);
+
+  Array<double> points(consts::maxNSD, data.nNo);
+  points = 0.0;
+  for (int a = 0; a < data.nNo; a++) {
+    for (int i = 0; i < nsd; i++) {
+      points(i,a) = data.gx(i,a);
+    }
+  }
+  vtk_writer->set_points(points);
+
+  vtk_writer->set_connectivity(nsd, data.IEN);
+
+  for (int iOut = 1; iOut < nOut; iOut++) {
+    const auto& name = outNames[iOut];
+    if (!output_field_for_immersed_part(name, part)) {
+      continue;
+    }
+
+    const int s = outS[iOut];
+    const int e = outS[iOut+1] - 1;
+    const int l = e - s + 1;
+
+    Array<double> values(l, data.nNo);
+    for (int a = 0; a < data.nNo; a++) {
+      for (int i = 0; i < l; i++) {
+        values(i,a) = data.gx(i+s,a);
+      }
+    }
+    vtk_writer->set_point_data(name, values);
+  }
+
+  Array<int> domain_id(1, data.nEl);
+  Array<int> mesh_id(1, data.nEl);
+  for (int e = 0; e < data.nEl; e++) {
+    domain_id(0,e) = output_domain;
+    mesh_id(0,e) = part == ImmersedOutputPart::fluid ? 0 : 1;
+  }
+  vtk_writer->set_element_data("Domain_ID", domain_id);
+  vtk_writer->set_element_data("Immersed_Output_Mesh_ID", mesh_id);
+
+  vtk_writer->write();
+  delete vtk_writer;
+}
+
+void write_immersed_domain_vtus(const ComMod& com_mod, const std::vector<mshType>& meshes,
+    const std::vector<dataType>& data, const std::vector<std::string>& outNames,
+    const std::vector<int>& outS, const int nOut, const std::string& time_label)
+{
+  if (!equation_uses_immersed_fsi(com_mod)) {
+    return;
+  }
+
+  const int fluid_domain = immersed_domain(com_mod, ImmersedOutputPart::fluid);
+  const int solid_domain = immersed_domain(com_mod, ImmersedOutputPart::solid);
+  if (fluid_domain < 0 || solid_domain < 0) {
+    return;
+  }
+
+  int n_fluid_meshes = 0;
+  int n_solid_meshes = 0;
+  for (int iM = 0; iM < com_mod.nMsh; iM++) {
+    if (mesh_has_domain(meshes[iM], fluid_domain)) {
+      n_fluid_meshes++;
+    }
+    if (mesh_has_domain(meshes[iM], solid_domain)) {
+      n_solid_meshes++;
+    }
+  }
+
+  for (int iM = 0; iM < com_mod.nMsh; iM++) {
+    if (mesh_has_domain(meshes[iM], fluid_domain)) {
+      const auto mesh_suffix = n_fluid_meshes > 1 ? "_" + meshes[iM].dname : "";
+      const auto file_name = com_mod.saveName + "_fluid" + mesh_suffix + "_" + time_label + ".vtu";
+      write_single_mesh_vtu(com_mod, meshes[iM], data[iM], outNames, outS, nOut,
+          file_name, ImmersedOutputPart::fluid, fluid_domain);
+    }
+
+    if (mesh_has_domain(meshes[iM], solid_domain)) {
+      const auto mesh_suffix = n_solid_meshes > 1 ? "_" + meshes[iM].dname : "";
+      const auto file_name = com_mod.saveName + "_solid" + mesh_suffix + "_" + time_label + ".vtu";
+      write_single_mesh_vtu(com_mod, meshes[iM], data[iM], outNames, outS, nOut,
+          file_name, ImmersedOutputPart::solid, solid_domain);
+    }
+  }
+}
+
+}
 
 void do_test()
 {
@@ -1456,15 +1642,17 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
   //
   std::string fName;
 
+  std::string time_label;
+
   if (com_mod.cTS > 1000 || lAve) {
-    fName = std::to_string(com_mod.cTS);
+    time_label = std::to_string(com_mod.cTS);
   } else { 
     std::ostringstream ss;
     ss << std::setw(3) << std::setfill('0') << com_mod.cTS;
-    fName = ss.str();
+    time_label = ss.str();
   }
 
-  fName = com_mod.saveName + "_" + fName + ".vtu";
+  fName = com_mod.saveName + "_" + time_label + ".vtu";
   auto vtk_writer = VtkData::create_writer(fName);
 
   // Writing the position data
@@ -1614,6 +1802,8 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
   }
   vtk_writer->write();
   delete vtk_writer;
+
+  write_immersed_domain_vtus(com_mod, meshes, d, outNames, outS, nOut, time_label);
 }
 
 };

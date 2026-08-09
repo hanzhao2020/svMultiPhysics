@@ -211,6 +211,8 @@ const std::map<std::string,EquationType> equation_name_to_type = {
 
     {"fluid-solid-interaction", EquationType::phys_FSI},
     {"FSI", EquationType::phys_FSI},
+    {"immersed_FSI", EquationType::phys_immersed_FSI},
+    {"immersed-fluid-solid-interaction", EquationType::phys_immersed_FSI},
 
     {"linear_elasticity", EquationType::phys_lElas},
     {"lElas", EquationType::phys_lElas},
@@ -332,4 +334,3 @@ const std::map<std::string,SolverType> solver_name_to_type
 
 
 };
-

@@ -12,6 +12,7 @@
 #include "cep_ion.h"
 #include "consts.h"
 #include "fs.h"
+#include "ib.h"
 #include "lhsa.h"
 #include "mat_fun.h"
 #include "nn.h"
@@ -507,6 +508,11 @@ void initialize(Simulation* simulation, Vector<double>& timeP)
     #endif
   }
 
+  if (com_mod.ibFlag) {
+    ib::initialize_immersed_meshes(com_mod);
+    std::cout << "rank:" << cm.idcm() << " Initializing immersed meshes" << std::endl;
+  }
+
   int ierr = 0;
   if (dFlag) {
     ierr = 1;
@@ -997,4 +1003,3 @@ void zero_init(Simulation* simulation, SolutionStates& solutions)
      }
   }
 }
-

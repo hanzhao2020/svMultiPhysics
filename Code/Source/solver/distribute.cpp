@@ -1465,6 +1465,14 @@ void dist_eq(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm, const std::
   cm.bcast(cm_mod, &lEq.useTLS);
   cm.bcast(cm_mod, &lEq.assmTLS);
   cm.bcast(cm_mod, &lEq.expl_geom_cpl);
+  cm.bcast(cm_mod, &lEq.immersed_method);
+  cm.bcast(cm_mod, lEq.immersed_method_type);
+  cm.bcast(cm_mod, lEq.immersed_coupling_method);
+  cm.bcast(cm_mod, lEq.immersed_interpolation);
+  cm.bcast(cm_mod, &lEq.immersed_fluid_domain);
+  cm.bcast(cm_mod, &lEq.immersed_solid_domain);
+  cm.bcast(cm_mod, &lEq.immersed_vms_stabilization_s);
+  cm.bcast(cm_mod, &lEq.immersed_vms_stabilization_width);
 
   #ifdef dist_eq
   dmsg << "lEq.nOutput: " << lEq.nOutput;

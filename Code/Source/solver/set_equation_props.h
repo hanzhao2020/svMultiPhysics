@@ -376,6 +376,86 @@ SetEquationPropertiesMapType set_equation_props = {
 } },
 
 //---------------------------//
+//    phys_immersed_FSI      //
+//---------------------------//
+//
+{consts::EquationType::phys_immersed_FSI, [](Simulation* simulation, EquationParameters* eq_params, eqType& lEq,
+      EquationProps& propL, EquationOutputs& outPuts, EquationNdop& nDOP) -> void
+{
+  using namespace consts;
+  auto& com_mod = simulation->get_com_mod();
+  lEq.phys = consts::EquationType::phys_immersed_FSI;
+  com_mod.ibFlag = true;
+  com_mod.mvMsh = false;
+
+  // Immersed FSI reuses the fluid and solid domain property readers, but
+  // unlike body-fitted FSI it does not imply ALE mesh motion.
+  EquationPhys phys { EquationType::phys_fluid, EquationType::phys_struct,
+      EquationType::phys_ustruct, EquationType::phys_lElas };
+
+  int n = 0;
+  propL[0][n] = PhysicalProperyType::fluid_density;
+  propL[1][n] = PhysicalProperyType::backflow_stab;
+  propL[2][n] = PhysicalProperyType::f_x;
+  propL[3][n] = PhysicalProperyType::f_y;
+  if (simulation->com_mod.nsd == 3) {
+    propL[4][n] = PhysicalProperyType::f_z;
+  }
+
+  n += 1;
+  propL[0][n] = PhysicalProperyType::solid_density;
+  propL[1][n] = PhysicalProperyType::elasticity_modulus;
+  propL[2][n] = PhysicalProperyType::poisson_ratio;
+  propL[3][n] = PhysicalProperyType::damping;
+  propL[4][n] = PhysicalProperyType::f_x;
+  propL[5][n] = PhysicalProperyType::f_y;
+  if (simulation->com_mod.nsd == 3) {
+    propL[6][n] = PhysicalProperyType::f_z;
+  }
+
+  n += 1;
+  propL[0][n] = PhysicalProperyType::solid_density;
+  propL[1][n] = PhysicalProperyType::elasticity_modulus;
+  propL[2][n] = PhysicalProperyType::poisson_ratio;
+  propL[3][n] = PhysicalProperyType::ctau_M;
+  propL[4][n] = PhysicalProperyType::ctau_C;
+  propL[5][n] = PhysicalProperyType::f_x;
+  propL[6][n] = PhysicalProperyType::f_y;
+  if (simulation->com_mod.nsd == 3) {
+    propL[7][n] = PhysicalProperyType::f_z;
+  }
+
+  n += 1;
+  propL[0][n] = PhysicalProperyType::solid_density;
+  propL[1][n] = PhysicalProperyType::elasticity_modulus;
+  propL[2][n] = PhysicalProperyType::poisson_ratio;
+  propL[3][n] = PhysicalProperyType::f_x;
+  propL[4][n] = PhysicalProperyType::f_y;
+  if (simulation->com_mod.nsd == 3) {
+    propL[5][n] = PhysicalProperyType::f_z;
+  }
+
+  read_domain(simulation, eq_params, lEq, propL, phys);
+
+  nDOP = {22, 4, 2, 0};
+  outPuts = {
+    OutputNameType::out_velocity, OutputNameType::out_pressure,
+    OutputNameType::out_displacement, OutputNameType::out_mises,
+    OutputNameType::out_WSS, OutputNameType::out_traction,
+    OutputNameType::out_vorticity, OutputNameType::out_vortex,
+    OutputNameType::out_strainInv, OutputNameType::out_energyFlux,
+    OutputNameType::out_viscosity, OutputNameType::out_absVelocity,
+    OutputNameType::out_stress, OutputNameType::out_cauchy,
+    OutputNameType::out_strain, OutputNameType::out_jacobian,
+    OutputNameType::out_defGrad, OutputNameType::out_integ,
+    OutputNameType::out_fibDir, OutputNameType::out_fibAlign,
+    OutputNameType::out_divergence, OutputNameType::out_acceleration
+  };
+
+  read_ls(simulation, eq_params, SolverType::lSolver_GMRES, lEq);
+} },
+
+//---------------------------//
 //        phys_lElas         //
 //---------------------------//
 //
@@ -633,4 +713,3 @@ SetEquationPropertiesMapType set_equation_props = {
 
 } },
 };
-

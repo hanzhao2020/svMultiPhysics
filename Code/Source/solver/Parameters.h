@@ -720,6 +720,29 @@ class svOneDSolverInterfaceParameters : public ParameterLists
     bool value_set = false;
 };
 
+/// @brief Immersed method options under Add_equation.
+class ImmersedMethodParameters : public ParameterLists
+{
+  public:
+    ImmersedMethodParameters();
+
+    static const std::string xml_element_name_;
+
+    bool defined() const { return value_set; };
+    void print_parameters();
+    void set_values(tinyxml2::XMLElement* xml_elem);
+
+    Parameter<std::string> type;
+    Parameter<int> background_fluid_domain;
+    Parameter<int> immersed_solid_domain;
+    Parameter<std::string> interpolation;
+    Parameter<std::string> coupling_method;
+    Parameter<double> vms_stabilization_s;
+    Parameter<double> vms_stabilization_width;
+
+    bool value_set = false;
+};
+
 /// @brief Body force over a mesh using the "Add_BF" command.
 ///
 /// \code {.xml}
@@ -1755,6 +1778,8 @@ class EquationParameters : public ParameterLists
     std::vector<BoundaryConditionParameters*> boundary_conditions;
 
     CoupleGenBCParameters couple_to_genBC;
+
+    ImmersedMethodParameters immersed_method;
 
     svZeroDSolverInterfaceParameters svzerodsolver_interface_parameters;
 

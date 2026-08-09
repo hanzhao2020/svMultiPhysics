@@ -128,6 +128,11 @@ private:
   void allocate_linear_system(eqType& eq);
 
   /**
+   * @brief Rebuild the sparse graph for the current IFEM coupling operator.
+   */
+  void rebuild_immersed_fsi_linear_system_graph();
+
+  /**
    * @brief Set body forces for the current time step
    */
   void set_body_forces();

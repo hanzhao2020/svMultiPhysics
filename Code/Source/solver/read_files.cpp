@@ -414,9 +414,9 @@ void read_bc(Simulation* simulation, EquationParameters* eq_params, eqType& lEq,
           __func__);
     }
 
-    if (std::set<EquationType>{Equation_fluid,Equation_FSI,Equation_CMM}.count(lEq.phys) == 0) {
+    if (std::set<EquationType>{Equation_fluid,Equation_FSI,Equation_CMM,Equation_immersed_FSI}.count(lEq.phys) == 0) {
       throw svmp::CoreException(
-          "[read_bc] Resistance is only defined for fluid/CMM/SI equations.",
+          "[read_bc] Resistance is only defined for fluid/CMM/FSI/immersed_FSI equations.",
           svmp::StatusCode::InvalidArgument,
           __FILE__,
           __LINE__,
@@ -440,9 +440,9 @@ void read_bc(Simulation* simulation, EquationParameters* eq_params, eqType& lEq,
           __func__);
     }
 
-    if (std::set<EquationType>{Equation_fluid,Equation_FSI,Equation_CMM}.count(lEq.phys) == 0) {
+    if (std::set<EquationType>{Equation_fluid,Equation_FSI,Equation_CMM,Equation_immersed_FSI}.count(lEq.phys) == 0) {
       throw svmp::CoreException(
-          "[read_bc] Resistance is only defined for fluid/CMM/FSI equations.",
+          "[read_bc] Resistance is only defined for fluid/CMM/FSI/immersed_FSI equations.",
           svmp::StatusCode::InvalidArgument,
           __FILE__,
           __LINE__,
@@ -1476,8 +1476,8 @@ void read_domain(Simulation* simulation, EquationParameters* eq_params, eqType& 
      // solid equaion types for each domain.
      //
      if (nPhys > 1) {
-        if (lEq.phys != EquationType::phys_FSI) {
-          throw std::runtime_error("Only FSI problems can have multiple domains.");
+        if (lEq.phys != EquationType::phys_FSI && lEq.phys != EquationType::phys_immersed_FSI) {
+          throw std::runtime_error("Only FSI or immersed_FSI problems can have multiple domains.");
         }
         auto eq_type = consts::equation_name_to_type.at(domain_params->equation());
         lEq.dmn[iDmn].phys = eq_type; 
@@ -1638,17 +1638,28 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
 
   lEq.useTLS  = false;
   lEq.assmTLS = false;
+  auto& com_mod = simulation->get_com_mod();
 
   lEq.coupled = eq_params->coupled.value();
   lEq.minItr = eq_params->min_iterations.value();
   lEq.maxItr = eq_params->max_iterations.value();
   lEq.tol = eq_params->tolerance.value();
   lEq.expl_geom_cpl = eq_params->explicit_geometric_coupling.value();
+  lEq.immersed_method = eq_params->immersed_method.defined();
+  if (lEq.immersed_method) {
+    lEq.immersed_method_type = eq_params->immersed_method.type.value();
+    lEq.immersed_coupling_method = eq_params->immersed_method.coupling_method.value();
+    lEq.immersed_interpolation = eq_params->immersed_method.interpolation.value();
+    lEq.immersed_fluid_domain = eq_params->immersed_method.background_fluid_domain.value();
+    lEq.immersed_solid_domain = eq_params->immersed_method.immersed_solid_domain.value();
+    lEq.immersed_vms_stabilization_s = eq_params->immersed_method.vms_stabilization_s.value();
+    lEq.immersed_vms_stabilization_width = eq_params->immersed_method.vms_stabilization_width.value();
+    com_mod.ibFlag = true;
+  }
 
   // Initialize coupled BC.
   //
   auto& chnl_mod = simulation->chnl_mod;
-  auto& com_mod = simulation->get_com_mod();
   auto& cplBC = com_mod.cplBC;
 
   if (cplBC.xo.size() == 0) {
@@ -1792,8 +1803,8 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
   }
 
   if (has_rcr_bc) { 
-    if (std::set<EquationType>{Equation_fluid,Equation_FSI,Equation_CMM}.count(lEq.phys) == 0) {
-      throw std::runtime_error("RCR-type BC is allowed for fluid/CMM/FSI eq. only.");
+    if (std::set<EquationType>{Equation_fluid,Equation_FSI,Equation_CMM,Equation_immersed_FSI}.count(lEq.phys) == 0) {
+      throw std::runtime_error("RCR-type BC is allowed for fluid/CMM/FSI/immersed_FSI eq. only.");
     }
     // Only set coupling scheme if not already configured by an external solver (e.g. svOneD, svZeroD).
     // When svOneD/svZeroD and RCR coexist, the external solver owns the scheme; RCR uses the same scheme.
