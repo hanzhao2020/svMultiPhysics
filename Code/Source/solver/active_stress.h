@@ -103,8 +103,17 @@ public:
    * @brief Constructor.
    *
    * @param n_states_ Number of state variables for this model.
+   * @param needs_fiber_stretch Whether this model uses the fiber stretch
+   *   passed to @ref advance_time_step. This flag can be used to determine
+   *   whether fiber stretch computation can be skipped for efficiency.
+   * @param needs_fiber_stretch_rate Whether this model uses the fiber stretch
+   *   rate passed to @ref advance_time_step. This flag can be used to determine
+   *   whether fiber stretch rate computation can be skipped for efficiency.
    */
-  ActiveStress(const unsigned int n_states_) : n_states(n_states_) {}
+  ActiveStress(const unsigned int n_states_, const bool needs_fiber_stretch,
+               const bool needs_fiber_stretch_rate)
+      : n_states(n_states_), needs_fiber_stretch_(needs_fiber_stretch),
+        needs_fiber_stretch_rate_(needs_fiber_stretch_rate) {}
 
   /**
    * @brief Virtual destructor.
@@ -178,7 +187,31 @@ public:
   /// Number of state variables for this model.
   const unsigned int n_states;
 
+  /**
+   * @brief Whether this model uses the fiber stretch passed to
+   * @ref advance_time_step. This flag can be used to determine whether fiber
+   * stretch computation can be skipped for efficiency.
+   */
+  bool needs_fiber_stretch() const { return needs_fiber_stretch_; }
+
+  /**
+   * @brief Whether this model uses the fiber stretch rate passed to
+   * @ref advance_time_step. This flag can be used to determine whether fiber
+   * stretch rate computation can be skipped for efficiency.
+   */
+  bool needs_fiber_stretch_rate() const { return needs_fiber_stretch_rate_; }
+
 protected:
+  /**
+   * @brief Backing store for @ref needs_fiber_stretch.
+   */
+  bool needs_fiber_stretch_;
+
+  /**
+   * @brief Backing store for @ref needs_fiber_stretch_rate.
+   */
+  bool needs_fiber_stretch_rate_;
+
   /**
    * @brief Read model parameters from a parameter object.
    *
@@ -225,9 +258,13 @@ protected:
 
   /**
    * @brief Compute the active tension for a single node.
+   *
+   * @param[in] state State vector for a single node.
+   * @param[in] fiber_stretch Fiber stretch at the current node.
    */
   virtual double
-  compute_active_tension_local(const Vector<double> &state) const = 0;
+  compute_active_tension_local(const Vector<double> &state,
+                               const double fiber_stretch) const = 0;
 
   /// Current time. Updated whenever calling @ref advance_time_step.
   double time;

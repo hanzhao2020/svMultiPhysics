@@ -59,7 +59,9 @@ public:
   /**
    * @brief Constructor.
    */
-  NashPanfilov() : ActiveStressODE(1) {}
+  NashPanfilov() : ActiveStressODE(/* n_state_variables = */ 1,
+                                  /* needs_fiber_stretch = */ false,
+                                  /* needs_fiber_stretch_rate = */ false) {}
 
   /**
    * @brief Construct an instance of model parameters.
@@ -101,7 +103,8 @@ protected:
    * @brief Compute the active tension for a single node.
    */
   virtual double
-  compute_active_tension_local(const Vector<double> &state) const override;
+  compute_active_tension_local(const Vector<double> &state,
+                               const double fiber_stretch) const override;
 
   /// @name Model parameters.
   /// @{

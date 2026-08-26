@@ -16,7 +16,7 @@
  *   \dv{\astressstate}{t} &=
  *     \mathbf{F}_\text{AS}(t, \astressstate, \calcium, \fiberstretch,
  *                          \fiberstretchrate)\;, \\
- *   \Tact &= \Tact(\astressstate)\;.
+ *   \Tact &= \Tact(\astressstate, \fiberstretch)\;.
  * \end{aligned} @f]
  *
  * ### Numerical methods
@@ -25,7 +25,7 @@
  * @ref ODESolver. After that, the active tension is computed for every node
  * @f$i@f$ as:
  * @f[
- *   {\Tact}_{i}^{n+1} = \Tact(\astressstate_i^{n+1})\;.
+ *   {\Tact}_{i}^{n+1} = \Tact(\astressstate_i^{n+1}, \fiberstretch_i^{n+1})\;.
  * @f]
  *
  * ### Implementing derived models
@@ -92,8 +92,12 @@ public:
    * @brief Constructor.
    *
    * @param n_states Number of state variables for this model.
+   * @param needs_fiber_stretch See @ref ActiveStress::ActiveStress.
+   * @param needs_fiber_stretch_rate See @ref ActiveStress::ActiveStress.
    */
-  ActiveStressODE(const unsigned int n_states) : ActiveStress(n_states) {}
+  ActiveStressODE(const unsigned int n_states, const bool needs_fiber_stretch,
+                  const bool needs_fiber_stretch_rate)
+      : ActiveStress(n_states, needs_fiber_stretch, needs_fiber_stretch_rate) {}
 
 protected:
   /**

@@ -235,7 +235,8 @@ set(CSRCS
   active_stress_uniform_unsteady.cpp
   active_stress_ode.cpp
   active_stress_nash_panfilov.cpp
-  
+  active_stress_regazzoni.cpp
+
   SPLIT.c
 
   svZeroD_interface/LPNSolverInterface.h svZeroD_interface/LPNSolverInterface.cpp
@@ -267,11 +268,17 @@ file(GLOB SOLVER_FE_MATH_SRCS CONFIGURE_DEPENDS
   FE/Math/*.h
 )
 
+file(GLOB SOLVER_FE_QUADRATURE_SRCS CONFIGURE_DEPENDS
+  FE/Quadrature/*.cpp
+  FE/Quadrature/*.h
+)
+
 list(APPEND CSRCS
   ${SOLVER_CORE_SRCS}
   ${SOLVER_FE_COMMON_SRCS}
   ${SOLVER_FE_BASIS_SRCS}
   ${SOLVER_FE_MATH_SRCS}
+  ${SOLVER_FE_QUADRATURE_SRCS}
 )
 
   # Set PETSc interace code.
