@@ -107,7 +107,7 @@ $(function() {
 <p>Bueno-Orovio ionic model.  
  <a href="class_bueno_orovio.html#details">More...</a></p>
 
-<p><code>#include &lt;<a class="el" href="ionic__bueno__orovio_8h_source.html">ionic_bueno_orovio.h</a>&gt;</code></p>
+<p><code>#include &lt;<a class="el" href="_ionic_model_bueno_orovio_8h_source.html">IonicModelBuenoOrovio.h</a>&gt;</code></p>
 <div class="dynheader">
 Inheritance diagram for BuenoOrovio:</div>
 <div class="dyncontent">
@@ -321,7 +321,8 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Bueno-Orovio ionic model. </p>
-<p><b>Reference</b>: <a href="https://doi.org/10.1016/j.jtbi.2008.03.029">Bueno-Orovio, Cherry, Fenton (2008)</a> </p>
+<p><b>Reference</b>: <a href="https://doi.org/10.1016/j.jtbi.2008.03.029">Bueno-Orovio, Cherry, Fenton (2008)</a></p>
+<dl class="section warning"><dt>Warning</dt><dd>The M-cell value of <code>tau_s2</code> is the third entry in the EPI/ENDO/M parameter list. svMultiPhysics uses 2 ms, while Bueno-Orovio et al. (2008), Table 1, reports 4 ms. </dd></dl>
 </div><h2 class="groupheader">Member Typedef Documentation</h2>
 <a id="a4e0fe5c4269cac9450c3023c42df8263" name="a4e0fe5c4269cac9450c3023c42df8263"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a4e0fe5c4269cac9450c3023c42df8263">&#9670;&#160;</a></span>ModelParam</h2>
@@ -342,7 +343,7 @@ Additional Inherited Members</h2></td></tr>
   </tr>
 </table>
 </div><div class="memdoc">
-<p>Alias for model parameters container. The three entries in each of these correspond to epicardium, endocardium and myocardium, respectively (see also table 1 in the reference paper). </p><dl class="todo"><dt><b><a class="el" href="todo.html#_todo000005">Todo:</a></b></dt><dd><p class="startdd">[TODO:DaveP] these guys should be maps map&lt;int,double&gt;. </p>
+<p>Alias for model parameters container. The three entries in each of these correspond to epicardium, endocardium and myocardium, respectively (see also table 1 in the reference paper). </p><dl class="todo"><dt><b><a class="el" href="todo.html#_todo000006">Todo:</a></b></dt><dd><p class="startdd">[TODO:DaveP] these guys should be maps map&lt;int,double&gt;. </p>
 <p class="enddd">[michelebucelli] Would it make sense to treat these in the same way as the epi/endo/myo zone are treated in the <a class="el" href="class_t_t_p.html" title="Ten Tusscher-Panfilov ionic model.">TTP</a> model? </p>
 </dd></dl>
 
@@ -1493,8 +1494,8 @@ Additional Inherited Members</h2></td></tr>
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following files:<ul>
-<li>solver/<a class="el" href="ionic__bueno__orovio_8h_source.html">ionic_bueno_orovio.h</a></li>
-<li>solver/<b>ionic_bueno_orovio.cpp</b></li>
+<li>solver/<a class="el" href="_ionic_model_bueno_orovio_8h_source.html">IonicModelBuenoOrovio.h</a></li>
+<li>solver/<b>IonicModelBuenoOrovio.cpp</b></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->
