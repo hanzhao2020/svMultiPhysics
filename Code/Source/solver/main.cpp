@@ -701,25 +701,22 @@ int main(int argc, char *argv[])
   return 0;
 
   } catch (const svmp::ExceptionBase& exception) {
-    if (mpi_rank == 0) {
-      std::cerr << "[svMultiPhysics] ERROR: The svMultiPhysics program has failed due to unhandled exception." << std::endl;
-      std::cerr << exception.what() << std::endl;
-    }
+    std::cerr << "[svMultiPhysics] ERROR rank " << mpi_rank
+              << ": unhandled exception." << std::endl;
+    std::cerr << exception.what() << std::endl;
     svmp::ExceptionRuntime::abort_mpi_if_needed(EXIT_FAILURE);
     svmp::ExceptionRuntime::finalize_mpi_if_needed();
     return EXIT_FAILURE;
   } catch (const std::exception& exception) {
-    if (mpi_rank == 0) {
-      std::cerr << "[svMultiPhysics] ERROR: The svMultiPhysics program has failed due to unhandled exception." << std::endl;
-      std::cerr << exception.what() << std::endl;
-    }
+    std::cerr << "[svMultiPhysics] ERROR rank " << mpi_rank
+              << ": unhandled exception." << std::endl;
+    std::cerr << exception.what() << std::endl;
     svmp::ExceptionRuntime::abort_mpi_if_needed(EXIT_FAILURE);
     svmp::ExceptionRuntime::finalize_mpi_if_needed();
     return EXIT_FAILURE;
   } catch (...) {
-    if (mpi_rank == 0) {
-      std::cerr << "[svMultiPhysics] ERROR: The svMultiPhysics program has failed due to an unknown unhandled exception." << std::endl;
-    }
+    std::cerr << "[svMultiPhysics] ERROR rank " << mpi_rank
+              << ": unknown unhandled exception." << std::endl;
     svmp::ExceptionRuntime::abort_mpi_if_needed(EXIT_FAILURE);
     svmp::ExceptionRuntime::finalize_mpi_if_needed();
     return EXIT_FAILURE;

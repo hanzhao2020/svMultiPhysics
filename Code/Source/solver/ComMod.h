@@ -1321,14 +1321,29 @@ class ifemCouplingType
     /// @brief Immersed solid node index.
     int ibNode = -1;
 
+    /// @brief Global solution node ID for ibNode.
+    int ibGlobalNode = -1;
+
     /// @brief Background fluid mesh index.
     int fluidMesh = -1;
 
     /// @brief Background fluid element index.
     int fluidElem = -1;
 
-    /// @brief Background fluid global node IDs for this interpolation row.
+    /// @brief Background fluid global element index in the distributed mesh order.
+    int fluidElemGlobal = -1;
+
+    /// @brief Rank that owns fluidElemGlobal.
+    int fluidElemOwnerRank = -1;
+
+    /// @brief Background fluid local solver node IDs used by current assembly.
     Vector<int> fluidNodes;
+
+    /// @brief Background fluid local solver node IDs.
+    Vector<int> fluidLocalNodes;
+
+    /// @brief Background fluid global solution node IDs.
+    Vector<int> fluidGlobalNodes;
 
     /// @brief Fluid shape-function values evaluated at the immersed point.
     Vector<double> N;
@@ -1387,6 +1402,9 @@ class ibType
     /// @brief IB position coordinates
     Array<double> x;
 
+    /// @brief Current immersed-node positions used by fluid stabilization.
+    Array<double> vmsX;
+
     /// @brief Velocity (new)
     Array<double> Yb;
 
@@ -1428,6 +1446,9 @@ class ibType
 
     /// @brief IFEM coupling operator rows for velocity interpolation and force spreading.
     std::vector<ifemCouplingType> ifemCoupling;
+
+    /// @brief IFEM rows requested by remote immersed-solid ranks and owned by this fluid rank.
+    std::vector<ifemCouplingType> ifemRemoteCoupling;
 
     /// @brief DERIVED class VARIABLES IB meshes;
     std::vector<mshType> msh;

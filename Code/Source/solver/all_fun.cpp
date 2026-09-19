@@ -479,7 +479,7 @@ double integ(const ComMod& com_mod, const CmMod& cm_mod, int dId, const Array<do
 
   bool isIB = false;
   if (ibFlag) {
-    if (nNo == com_mod.ib.tnNo) {
+    if (nNo == com_mod.ib.tnNo && nNo != tnNo) {
       isIB = true;
     }
   } 
@@ -668,7 +668,7 @@ double integ(const ComMod& com_mod, const CmMod& cm_mod, int dId, const Array<do
     }
   }
 
-  if (com_mod.cm.seq() || isIB) {
+  if (com_mod.cm.seq()) {
     return result;
   }
 
@@ -737,7 +737,7 @@ double integ(const ComMod& com_mod, const CmMod& cm_mod, const faceType& lFa, co
   bool isIB = false;
 
   if (com_mod.ibFlag) {
-    if (nNo == com_mod.ib.tnNo) {
+    if (nNo == com_mod.ib.tnNo && nNo != com_mod.tnNo) {
       isIB = true;
     }
   }
@@ -830,7 +830,7 @@ double integ(const ComMod& com_mod, const CmMod& cm_mod, const faceType& lFa, co
   }
 
   // If using multiple processors, add result from all processors
-  if (com_mod.cm.seq() || isIB) {
+  if (com_mod.cm.seq()) {
     return result; 
   }
 
@@ -904,7 +904,7 @@ double integ(const ComMod& com_mod, const CmMod& cm_mod, const faceType& lFa,
   // If using Immersed Boundary Method
   bool isIB = false;
   if (com_mod.ibFlag) {
-    if (nNo ==  com_mod.ib.tnNo) {
+    if (nNo == com_mod.ib.tnNo && nNo != tnNo) {
       isIB = true;
     }
   }
@@ -957,7 +957,7 @@ double integ(const ComMod& com_mod, const CmMod& cm_mod, const faceType& lFa,
   }
 
   // If using multiple processors, add result from all processors
-  if (cm.seq() || isIB) {
+  if (cm.seq()) {
     return result; 
   }
 
