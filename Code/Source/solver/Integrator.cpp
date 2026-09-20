@@ -191,7 +191,6 @@ bool Integrator::step(bool save_results) {
       ib::project_fluid_velocity_to_solid(com_mod, solutions_);
     }
 
-    output::output_result(simulation_, com_mod.timeP, 2, iEqOld);
     newton_count_ += 1;
   } // End of Newton iteration loop
 }
