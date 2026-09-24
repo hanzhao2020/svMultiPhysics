@@ -1848,6 +1848,9 @@ class ComMod {
     /// Modified in: lhsa()
     Vector<int> colPtr;
 
+    /// @brief Global node IDs for IFEM matrix columns absent from this rank's node map.
+    Vector<int> ifemColumnGlobalNodes;
+
     /// @brief Domain ID
     Vector<int>  dmnId;
 

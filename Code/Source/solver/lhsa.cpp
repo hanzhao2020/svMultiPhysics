@@ -131,6 +131,8 @@ void lhsa(Simulation* simulation, int& nnz)
   auto& com_mod = simulation->com_mod;
   auto& idMap = com_mod.idMap;
   int tnNo = com_mod.tnNo;
+  // The rebuilt graph discovers its column-only IFEM imports from scratch.
+  com_mod.ifemColumnGlobalNodes.clear();
   idMap.resize(tnNo);
 
   for (int a = 0; a < tnNo; a++) { 
@@ -413,4 +415,3 @@ void resiz(const int tnNo, int& mnnzeic, Array<int>& uInd)
 }
 
 };
-

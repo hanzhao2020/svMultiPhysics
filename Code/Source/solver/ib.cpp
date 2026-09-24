@@ -522,19 +522,35 @@ void add_ifem_graph_entries(ComMod& com_mod, const std::vector<std::vector<int>>
 }
 
 
-std::vector<int> map_support_to_local(const ComMod& com_mod, const ifemCouplingType& row,
-    const std::string& caller)
+int matrix_column_for_global_node(ComMod& com_mod, const int global_node)
+{
+  const int local_node = global_to_local_node(com_mod, global_node);
+  if (local_node >= 0) {
+    return local_node;
+  }
+
+  for (int a = 0; a < com_mod.ifemColumnGlobalNodes.size(); a++) {
+    if (com_mod.ifemColumnGlobalNodes(a) == global_node) {
+      return com_mod.tnNo + a;
+    }
+  }
+
+  const int remote_index = com_mod.ifemColumnGlobalNodes.size();
+  // This rank owns no row for this node; FSILS imports it as a column-only ghost.
+  com_mod.ifemColumnGlobalNodes.grow(1);
+  com_mod.ifemColumnGlobalNodes(remote_index) = global_node;
+  return com_mod.tnNo + remote_index;
+}
+
+
+std::vector<int> map_support_to_matrix_columns(ComMod& com_mod,
+    const std::vector<int>& global_support)
 {
   std::vector<int> support;
-  support.reserve(row.fluidGlobalNodes.size());
+  support.reserve(global_support.size());
 
-  for (int a = 0; a < row.fluidGlobalNodes.size(); a++) {
-    const int local_node = global_to_local_node(com_mod, row.fluidGlobalNodes(a));
-    if (local_node < 0) {
-      throw std::runtime_error("[ib::" + caller + "] Missing local or ghost fluid node " +
-          std::to_string(row.fluidGlobalNodes(a)) + " needed for mixed-owner IFEM assembly.");
-    }
-    support.push_back(local_node);
+  for (const int global_node : global_support) {
+    support.push_back(matrix_column_for_global_node(com_mod, global_node));
   }
 
   return support;
@@ -594,6 +610,7 @@ void add_remote_ifem_graph_entries(ComMod& com_mod, const int solid_domain,
   }
 
   std::vector<int> records;
+  // Every owned fluid row needs the exact support of solid elements on all ranks.
   allgatherv_int(com_mod, local_records, records);
 
   int pos = 0;
@@ -627,21 +644,67 @@ void add_remote_ifem_graph_entries(ComMod& com_mod, const int solid_domain,
         continue;
       }
 
-      std::vector<int> support;
-      support.reserve(global_supports[a].size());
-      for (const int global_node : global_supports[a]) {
-        const int local_node = global_to_local_node(com_mod, global_node);
-        if (local_node < 0) {
-          throw std::runtime_error("[ib::add_ifem_coupling_to_lhs_graph] Missing local or ghost "
-              "fluid node " + std::to_string(global_node) +
-              " needed for mixed-owner remote IFEM graph assembly.");
-        }
-        support.push_back(local_node);
-      }
-      supports.push_back(std::move(support));
+      supports.push_back(map_support_to_matrix_columns(com_mod, global_supports[a]));
     }
 
     add_ifem_graph_entries(com_mod, supports, owned_rows, mnnzeic, uInd);
+  }
+}
+
+
+void add_exact_ifem_graph_entries(ComMod& com_mod, const int solid_domain,
+    int& mnnzeic, Array<int>& uInd)
+{
+  auto& ib_data = com_mod.ib;
+  std::vector<int> local_records;
+
+  for (const auto& ib_mesh : ib_data.msh) {
+    if (!mesh_has_domain(ib_mesh, solid_domain)) {
+      continue;
+    }
+
+    for (int e = 0; e < ib_mesh.nEl; e++) {
+      local_records.push_back(ib_mesh.eNoN);
+      for (int a = 0; a < ib_mesh.eNoN; a++) {
+        const auto& row = ib_data.ifemCoupling[ib_mesh.IEN(a,e)];
+        local_records.push_back(row.fluidGlobalNodes.size());
+        for (int n = 0; n < row.fluidGlobalNodes.size(); n++) {
+          local_records.push_back(row.fluidGlobalNodes(n));
+        }
+      }
+    }
+  }
+
+  std::vector<int> records;
+  allgatherv_int(com_mod, local_records, records);
+
+  int pos = 0;
+  while (pos < records.size()) {
+    const int eNoN = records[pos++];
+    std::vector<std::vector<int>> global_supports(eNoN);
+    for (int a = 0; a < eNoN; a++) {
+      const int n_support = records[pos++];
+      global_supports[a].resize(n_support);
+      for (int n = 0; n < n_support; n++) {
+        global_supports[a][n] = records[pos++];
+      }
+    }
+
+    for (const auto& global_support_a : global_supports) {
+      for (const int global_a : global_support_a) {
+        const int local_a = global_to_local_node(com_mod, global_a);
+        if (local_a < 0) {
+          continue;
+        }
+
+        for (const auto& global_support_b : global_supports) {
+          for (const int global_b : global_support_b) {
+            const int column_b = matrix_column_for_global_node(com_mod, global_b);
+            lhsa_ns::add_col(com_mod.tnNo, local_a, column_b, mnnzeic, uInd);
+          }
+        }
+      }
+    }
   }
 }
 
@@ -772,7 +835,11 @@ void add_ifem_spread_to_fluid(ComMod& com_mod, const std::vector<const ifemCoupl
 
           if (matrix_ptr < 0) {
             throw std::runtime_error("[ib::construct_immersed_fsi] Missing sparse matrix entry "
-                "for IFEM projected tangent.");
+                "for IFEM projected tangent: row=" + std::to_string(fluid_A) +
+                ", column=" + std::to_string(fluid_B) +
+                ", local_nodes=" + std::to_string(com_mod.tnNo) +
+                ", remote_columns=" +
+                std::to_string(com_mod.ifemColumnGlobalNodes.size()) + ".");
           }
 
           for (int j = 0; j < nsd; j++) {
@@ -795,17 +862,15 @@ void add_ifem_spread_to_fluid(ComMod& com_mod, const std::vector<const ifemCoupl
 }
 
 
-ifemCouplingType make_column_row_on_rank(const ComMod& com_mod, const ifemCouplingType& row,
-    const std::string& caller)
+ifemCouplingType make_column_row_on_rank(ComMod& com_mod, const ifemCouplingType& row)
 {
   ifemCouplingType local_row = row;
-  const auto support = map_support_to_local(com_mod, row, caller);
-  local_row.fluidNodes.resize(support.size());
-  local_row.fluidLocalNodes.resize(support.size());
-
-  for (int a = 0; a < support.size(); a++) {
-    local_row.fluidNodes(a) = support[a];
-    local_row.fluidLocalNodes(a) = support[a];
+  local_row.fluidNodes.resize(row.fluidGlobalNodes.size());
+  local_row.fluidLocalNodes.resize(row.fluidGlobalNodes.size());
+  for (int a = 0; a < row.fluidGlobalNodes.size(); a++) {
+    const int column = matrix_column_for_global_node(com_mod, row.fluidGlobalNodes(a));
+    local_row.fluidNodes(a) = column;
+    local_row.fluidLocalNodes(a) = column;
   }
 
   return local_row;
@@ -881,14 +946,9 @@ void add_remote_ifem_spread_to_fluid(ComMod& com_mod, const std::vector<int>& lo
       row.fluidGlobalNodes.resize(global_supports[a].size());
       row.N.resize(global_supports[a].size());
       for (int n = 0; n < global_supports[a].size(); n++) {
-        const int local_node = global_to_local_node(com_mod, global_supports[a][n]);
-        if (local_node < 0) {
-          throw std::runtime_error("[ib::construct_immersed_fsi] Missing local or ghost fluid node " +
-              std::to_string(global_supports[a][n]) +
-              " needed for mixed-owner remote IFEM tangent assembly.");
-        }
-        row.fluidNodes(n) = local_node;
-        row.fluidLocalNodes(n) = local_node;
+        const int column = matrix_column_for_global_node(com_mod, global_supports[a][n]);
+        row.fluidNodes(n) = column;
+        row.fluidLocalNodes(n) = column;
         row.fluidGlobalNodes(n) = global_supports[a][n];
         row.N(n) = shape_values[a][n];
       }
@@ -1466,20 +1526,24 @@ bool build_ifem_coupling_operator(ComMod& com_mod, const SolutionStates& solutio
 
   build_coupling_rows(com_mod, fluid_domain, "build_ifem_coupling_operator");
 
-  if (!com_mod.cm.seq()) {
-    return false;
-  }
-
-  if (!previous_coupling_exists) {
-    return true;
-  }
-  for (int a = 0; a < ib_data.tnNo; a++) {
-    if (old_fluid_mesh[a] != ib_data.ifemCoupling[a].fluidMesh ||
-        old_fluid_elem[a] != ib_data.ifemCoupling[a].fluidElem) {
-      return true;
+  int local_graph_changed = previous_coupling_exists ? 0 : 1;
+  if (previous_coupling_exists) {
+    for (int a = 0; a < ib_data.tnNo; a++) {
+      if (old_fluid_mesh[a] != ib_data.ifemCoupling[a].fluidMesh ||
+          old_fluid_elem[a] != ib_data.ifemCoupling[a].fluidElem) {
+        local_graph_changed = 1;
+        break;
+      }
     }
   }
-  return false;
+
+  int graph_changed = local_graph_changed;
+  if (!com_mod.cm.seq()) {
+    // Rebuild everywhere when any rank observes a coupling stencil change.
+    MPI_Allreduce(&local_graph_changed, &graph_changed, 1, cm_mod::mpint,
+        MPI_MAX, com_mod.cm.com());
+  }
+  return graph_changed != 0;
 }
 
 
@@ -1556,7 +1620,8 @@ void add_ifem_coupling_to_lhs_graph(ComMod& com_mod, int& mnnzeic, Array<int>& u
           owned_rows[a] = 1;
           supports.push_back(graph_nodes[ib_a]);
         } else {
-          supports.push_back(map_support_to_local(com_mod, row, "add_ifem_coupling_to_lhs_graph"));
+          supports.push_back(map_support_to_matrix_columns(com_mod,
+              std::vector<int>(row.fluidGlobalNodes.begin(), row.fluidGlobalNodes.end())));
         }
       }
       add_ifem_graph_entries(com_mod, supports, owned_rows, mnnzeic, uInd);
@@ -1565,6 +1630,8 @@ void add_ifem_coupling_to_lhs_graph(ComMod& com_mod, int& mnnzeic, Array<int>& u
 
   if (!com_mod.cm.seq()) {
     add_remote_ifem_graph_entries(com_mod, solid_domain, remote_graph_nodes, mnnzeic, uInd);
+    // Close locally owned rows over remote solid-element supports as well.
+    add_exact_ifem_graph_entries(com_mod, solid_domain, mnnzeic, uInd);
   }
 }
 
@@ -1822,8 +1889,7 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
               owned_rows[a] = 1;
               local_rows[a] = rows[a];
             } else {
-              column_rows[a] = make_column_row_on_rank(com_mod, *rows[a],
-                  "construct_immersed_fsi");
+              column_rows[a] = make_column_row_on_rank(com_mod, *rows[a]);
               local_rows[a] = &column_rows[a];
             }
           }

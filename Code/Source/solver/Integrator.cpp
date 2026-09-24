@@ -11,6 +11,7 @@
 #include "fs.h"
 #include "ls.h"
 #include "lhsa.h"
+#include "lhs.h"
 #include "nn.h"
 #include "output.h"
 #include "post.h"
@@ -238,13 +239,20 @@ void Integrator::rebuild_immersed_fsi_linear_system_graph()
   auto& com_mod = simulation_->com_mod;
   auto& lhs = com_mod.lhs;
 
-  if (lhs.commu.nTasks != 1) {
-    throw std::runtime_error("[Integrator::rebuild_immersed_fsi_linear_system_graph] "
-        "Adaptive IFEM sparse graph rebuild is currently implemented only for serial FSILS runs.");
-  }
-
   int nnz = 0;
   lhsa_ns::lhsa(simulation_, nnz);
+
+  if (lhs.commu.nTasks != 1) {
+    // Recreate distributed FSILS storage after the IFEM graph changes.
+    auto communicator = lhs.commu;
+    auto faces = lhs.face;
+    const int n_faces = lhs.nFaces;
+    fsi_linear_solver::fsils_lhs_create(lhs, communicator, com_mod.gtnNo,
+        com_mod.tnNo, nnz, com_mod.ltg, com_mod.rowPtr, com_mod.colPtr,
+        n_faces, com_mod.ifemColumnGlobalNodes);
+    lhs.face = std::move(faces);
+    return;
+  }
 
   lhs.nnz = nnz;
   lhs.nNo = com_mod.tnNo;

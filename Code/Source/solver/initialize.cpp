@@ -659,8 +659,10 @@ void initialize(Simulation* simulation, Vector<double>& timeP)
 
   fsi_linear_solver::fsils_commu_create(communicator, cm.com());
 
+  // Register IFEM-only columns so FSILS can import their solution values.
   fsi_linear_solver::fsils_lhs_create(com_mod.lhs, communicator, com_mod.gtnNo, com_mod.tnNo, nnz, 
-      com_mod.ltg, com_mod.rowPtr, com_mod.colPtr, nFacesLS);
+      com_mod.ltg, com_mod.rowPtr, com_mod.colPtr, nFacesLS,
+      com_mod.ifemColumnGlobalNodes);
 
   // Variable allocation and initialization
   int tnNo = com_mod.tnNo; 
