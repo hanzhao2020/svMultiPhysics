@@ -1788,6 +1788,13 @@ class EquationParameters : public ParameterLists
     // and only then is the mesh equation solved.
     Parameter<bool> explicit_geometric_coupling;
 
+    // Mesh equation only: solve the pseudo-elastic mesh motion for the total
+    // displacement on the original (initial) mesh instead of for the increment on
+    // the configuration at the beginning of the time step. The mesh is then a
+    // function of the current boundary displacement only (no drift under cyclic
+    // boundary motion).
+    Parameter<bool> use_original_mesh_reference;
+
     // Sub-element parameters.
     //
     std::vector<BodyForceParameters*> body_forces;

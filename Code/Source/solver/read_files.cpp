@@ -1657,6 +1657,7 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
   lEq.maxItr = eq_params->max_iterations.value();
   lEq.tol = eq_params->tolerance.value();
   lEq.expl_geom_cpl = eq_params->explicit_geometric_coupling.value();
+  lEq.mesh_total_disp = eq_params->use_original_mesh_reference.value();
 
   // Initialize coupled BC.
   //
@@ -2042,7 +2043,9 @@ void read_files(Simulation* simulation, const std::string& file_name)
       }
       // Use the explicit geometry coupling flag of the FSI equation.
       eq.expl_geom_cpl = com_mod.eq[0].expl_geom_cpl; 
-    }     
+    } else if (eq.mesh_total_disp) {
+      throw std::runtime_error("Use_original_mesh_reference is only valid for the mesh equation.");
+    }
   }
   #ifdef debug_read_files
   dmsg << "Done Read equations " << " ";

@@ -15,6 +15,7 @@
 
 #include <array>
 #include <iomanip>
+#include <iostream>
 #include <math.h>
 
 namespace mesh {
@@ -62,6 +63,7 @@ void construct_mesh(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const S
                 dol(nsd,eNoN), pS0l(nsymd,eNoN), Nx(nsd,eNoN), lR(dof,eNoN);
   Array3<double> lK(dof*dof,eNoN,eNoN);
   Array<double> ksix(nsd,nsd), bfl(nsd,eNoN);
+  int n_inverted = 0;
 
   for (int e = 0; e < lM.nEl; e++) {
     // Update domain and proceed if domain phys and eqn phys match
@@ -95,12 +97,36 @@ void construct_mesh(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const S
       }
     }
 
-    // For MESH, the reference configuration is the one at the
-    // beginning of the time step. Update displacements accordingly
-    for (int i = 0; i < nsd; i++) {
-      for (int j = 0; j < eNoN; j++) {
-        xl(i,j) = xl(i,j) + dol(i,j);
-        dl(i+is,j) = dl(i+is,j) - dol(i,j);
+    // Reference configuration of the pseudo-elastic mesh problem:
+    //  - default (incremental): the configuration at the beginning of the time
+    //    step; the unknown is the displacement increment D - D_old.
+    //  - Use_original_mesh_reference (total): the original mesh; the unknown is
+    //    the total displacement D. The mesh is then a (linear) function of the
+    //    current boundary displacement only, so it does not drift under cyclic
+    //    boundary motion.
+    if (!eq.mesh_total_disp) {
+      for (int i = 0; i < nsd; i++) {
+        for (int j = 0; j < eNoN; j++) {
+          xl(i,j) = xl(i,j) + dol(i,j);
+          dl(i+is,j) = dl(i+is,j) - dol(i,j);
+        }
+      }
+    } else {
+      // The stiffness is integrated on the original mesh, so an inverted
+      // deformed element would go unnoticed here. Check the start-of-step
+      // configuration at the first Gauss point and count inverted elements
+      // (Nx is recomputed from xl in the Gauss loop below).
+      Array<double> xcur(nsd,eNoN);
+      for (int i = 0; i < nsd; i++) {
+        for (int j = 0; j < eNoN; j++) {
+          xcur(i,j) = xl(i,j) + dol(i,j);
+        }
+      }
+      double Jcur{0.0};
+      auto Nx_c = lM.Nx.rslice(0);
+      nn::gnn(eNoN, nsd, nsd, Nx_c, xcur, Nx, Jcur, ksix);
+      if (Jcur <= 0.0) {
+        n_inverted += 1;
       }
     }
 
@@ -132,6 +158,15 @@ void construct_mesh(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const S
     }
 
     eq.linear_algebra->assemble(com_mod, eNoN, ptr, lK, lR);
+  }
+
+  // Report inverted deformed elements once per time step (total formulation only).
+  static int last_reported_step = -1;
+  if (n_inverted > 0 && com_mod.cTS != last_reported_step) {
+    std::cout << "WARNING [construct_mesh] " << n_inverted
+              << " mesh element(s) with non-positive Jacobian in the deformed configuration"
+              << " (time step " << com_mod.cTS << ", process " << com_mod.cm.idcm() << ")." << std::endl;
+    last_reported_step = com_mod.cTS;
   }
 }
 

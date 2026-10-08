@@ -1220,6 +1220,10 @@ class eqType
     /// @brief Explicit geometry coupling
     bool expl_geom_cpl = false;
 
+    /// @brief Mesh equation: total displacement on the original mesh
+    /// (true) instead of the increment on the start-of-step configuration (false)
+    bool mesh_total_disp = false;
+
     /// @brief Body force associated with this equation
     std::vector<bfType> bf;
 };

@@ -2619,6 +2619,8 @@ EquationParameters::EquationParameters() {
                 use_taylor_hood_type_basis);
   set_parameter("Explicit_geometric_coupling", false, !required,
                 explicit_geometric_coupling);
+  set_parameter("Use_original_mesh_reference", false, !required,
+                use_original_mesh_reference);
 }
 
 void EquationParameters::print_parameters() {
