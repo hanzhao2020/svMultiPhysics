@@ -1831,7 +1831,8 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
       Array<double> ksix(nsd,nsd);
 
       for (int g = 0; g < ib_mesh.nG; g++) {
-        if (g == 0 || !ib_mesh.lShpF) {
+        const bool recompute_visc = (g == 0 || !ib_mesh.lShpF);
+        if (recompute_visc) {
           auto Nx_g = ib_mesh.Nx.slice(g);
           nn::gnn(eNoN, nsd, nsd, Nx_g, xl, Nx, Jac, ksix);
           if (utils::is_zero(Jac)) {
@@ -1846,10 +1847,10 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
 
         if (nsd == 3) {
           struct_ns::struct_3d(com_mod, cep_mod, eNoN, nFn, w, N, Nx, al, yl, dl, bfl, fN, pS0l, pSl,
-                               ya_l_f, ya_l_s, ya_l_n, lR, lK);
+                               ya_l_f, ya_l_s, ya_l_n, lR, lK, recompute_visc);
         } else if (nsd == 2) {
           struct_ns::struct_2d(com_mod, cep_mod, eNoN, nFn, w, N, Nx, al, yl, dl, bfl, fN, pS0l, pSl,
-                               ya_l_f, ya_l_s, ya_l_n, lR, lK);
+                               ya_l_f, ya_l_s, ya_l_n, lR, lK, recompute_visc);
         }
 
         if (pstEq) {
