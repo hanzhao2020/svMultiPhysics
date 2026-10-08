@@ -34,6 +34,17 @@ void fsils_solve(FSILS_lhsType& lhs, FSILS_lsType& ls, const int dof, Array<doub
   const int nNo = lhs.nNo;
   const int nnz = lhs.nnz;
   const int nFaces = lhs.nFaces;
+
+  if (lhs.hasRemoteColumns &&
+      prec == PreconditionerType::PREC_RCS) {
+    throw std::runtime_error("FSILS: RCS preconditioning does not support "
+        "column-only ghosts. Use the fsils diagonal preconditioner.");
+  }
+  if (lhs.hasRemoteColumns &&
+      ls.LS_type == LinearSolverType::LS_TYPE_NS) {
+    throw std::runtime_error("FSILS: The segregated NS solver does not support "
+        "column-only ghosts. Use GMRES, CG, or BiCGStab.");
+  }
   #ifdef debug_fsils_solve
   dmsg << "nNo: " << nNo;
   dmsg << "nnz: " << nnz;

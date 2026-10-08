@@ -19,6 +19,74 @@
 
 namespace fsi_linear_solver {
 
+void fsils_import_remote(const FSILS_lhsType& lhs, const Vector<double>& local,
+    Vector<double>& remote)
+{
+  const int n_remote = lhs.remoteColumnGlobalNodes.size();
+  remote.resize(n_remote);
+  if (!lhs.hasRemoteColumns) {
+    return;
+  }
+
+  const int n_send = lhs.remoteSendLocalIndices.size();
+  std::vector<double> send_values(n_send);
+  std::vector<double> recv_values(n_remote);
+  for (int i = 0; i < n_send; i++) {
+    send_values[i] = local(lhs.remoteSendLocalIndices[i]);
+  }
+
+  MPI_Alltoallv(send_values.data(), lhs.remoteSendCounts.data(),
+      lhs.remoteSendDispls.data(), cm_mod::mpreal,
+      recv_values.data(), lhs.remoteRecvCounts.data(),
+      lhs.remoteRecvDispls.data(), cm_mod::mpreal, lhs.commu.comm);
+
+  for (int i = 0; i < n_remote; i++) {
+    remote(lhs.remoteRecvIndices[i]) = recv_values[i];
+  }
+}
+
+
+void fsils_import_remote(const FSILS_lhsType& lhs, const int dof,
+    const Array<double>& local, Array<double>& remote)
+{
+  const int n_remote = lhs.remoteColumnGlobalNodes.size();
+  remote.resize(dof, n_remote);
+  if (!lhs.hasRemoteColumns) {
+    return;
+  }
+
+  const int nTasks = lhs.commu.nTasks;
+  std::vector<int> send_counts(nTasks), send_displs(nTasks);
+  std::vector<int> recv_counts(nTasks), recv_displs(nTasks);
+  for (int rank = 0; rank < nTasks; rank++) {
+    send_counts[rank] = dof*lhs.remoteSendCounts[rank];
+    send_displs[rank] = dof*lhs.remoteSendDispls[rank];
+    recv_counts[rank] = dof*lhs.remoteRecvCounts[rank];
+    recv_displs[rank] = dof*lhs.remoteRecvDispls[rank];
+  }
+
+  const int n_send = lhs.remoteSendLocalIndices.size();
+  std::vector<double> send_values(dof*n_send);
+  std::vector<double> recv_values(dof*n_remote);
+  for (int a = 0; a < n_send; a++) {
+    const int local_node = lhs.remoteSendLocalIndices[a];
+    for (int i = 0; i < dof; i++) {
+      send_values[dof*a + i] = local(i,local_node);
+    }
+  }
+
+  MPI_Alltoallv(send_values.data(), send_counts.data(), send_displs.data(),
+      cm_mod::mpreal, recv_values.data(), recv_counts.data(),
+      recv_displs.data(), cm_mod::mpreal, lhs.commu.comm);
+
+  for (int a = 0; a < n_remote; a++) {
+    const int remote_node = lhs.remoteRecvIndices[a];
+    for (int i = 0; i < dof; i++) {
+      remote(i,remote_node) = recv_values[dof*a + i];
+    }
+  }
+}
+
 void fsils_commus(const FSILS_lhsType& lhs, Vector<double>& R)
 {
   if (lhs.commu.nTasks == 1) {
@@ -143,5 +211,3 @@ void fsils_commuv(const FSILS_lhsType& lhs, int dof, Array<double>& R)
 }
 
 };
-
-

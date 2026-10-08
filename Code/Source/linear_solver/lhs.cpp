@@ -28,7 +28,8 @@ namespace fsi_linear_solver {
 ///  lhs.face
 //
 void fsils_lhs_create(FSILS_lhsType& lhs, FSILS_commuType& commu, int gnNo, int nNo, int nnz, Vector<int>& gNodes,  
-       Vector<int> &rowPtr, Vector<int>& colPtr, int nFaces)
+       Vector<int> &rowPtr, Vector<int>& colPtr, int nFaces,
+       const Vector<int>& remoteColumnGlobalNodes)
 {
   #define n_debug_fsils_lhs_create
   #ifdef debug_fsils_lhs_create
@@ -42,6 +43,8 @@ void fsils_lhs_create(FSILS_lhsType& lhs, FSILS_commuType& commu, int gnNo, int 
   lhs.nnz = nnz;
   lhs.commu = commu;
   lhs.nFaces = nFaces;
+  lhs.remoteColumnGlobalNodes = remoteColumnGlobalNodes;
+  lhs.hasRemoteColumns = false;
   #ifdef debug_fsils_lhs_create
   dmsg << "gnNo: " << gnNo;
   dmsg << "nNo: " << nNo;
@@ -226,7 +229,17 @@ void fsils_lhs_create(FSILS_lhsType& lhs, FSILS_commuType& commu, int gnNo, int 
   }
 
   for (int i = 0; i < nnz; i++) {
-    lhs.colPtr(i) = lhs.map(colPtr(i));
+    const int column = colPtr(i);
+    if (column < nNo) {
+      lhs.colPtr(i) = lhs.map(column);
+    } else {
+      const int remote_index = column - nNo;
+      if (remote_index < 0 || remote_index >= remoteColumnGlobalNodes.size()) {
+        throw std::runtime_error("FSILS: Invalid column-only ghost index " +
+            std::to_string(column) + ".");
+      }
+      lhs.colPtr(i) = nNo + remote_index;
+    }
   }
 
   // diagPtr points to the diagonal entries of LHS
@@ -345,6 +358,77 @@ void fsils_lhs_create(FSILS_lhsType& lhs, FSILS_commuType& commu, int gnNo, int 
       }
     }
   }
+
+  // Build an import plan for matrix columns that are not part of the
+  // ordinary local/ghost node map. Ownership follows the same reordered
+  // FSILS node range used by global dot products.
+  const int n_remote = remoteColumnGlobalNodes.size();
+  int global_remote_count = 0;
+  MPI_Allreduce(&n_remote, &global_remote_count, 1, cm_mod::mpint, MPI_SUM, comm);
+  lhs.hasRemoteColumns = global_remote_count != 0;
+  lhs.remoteRecvCounts.assign(nTasks, 0);
+  lhs.remoteRecvDispls.assign(nTasks, 0);
+  lhs.remoteSendCounts.assign(nTasks, 0);
+  lhs.remoteSendDispls.assign(nTasks, 0);
+  lhs.remoteRecvIndices.clear();
+  lhs.remoteSendLocalIndices.clear();
+
+  std::vector<int> local_owner(gnNo, -1);
+  std::vector<int> owner(gnNo, -1);
+  for (int a = 0; a < lhs.mynNo; a++) {
+    local_owner[ltg(a)] = tF;
+  }
+  MPI_Allreduce(local_owner.data(), owner.data(), gnNo, cm_mod::mpint,
+      MPI_MAX, comm);
+
+  for (int a = 0; a < n_remote; a++) {
+    const int global_node = remoteColumnGlobalNodes(a);
+    if (global_node < 0 || global_node >= gnNo || owner[global_node] < 0) {
+      throw std::runtime_error("FSILS: No owner found for column-only ghost node " +
+          std::to_string(global_node) + ".");
+    }
+    lhs.remoteRecvCounts[owner[global_node]]++;
+  }
+
+  for (int rank = 1; rank < nTasks; rank++) {
+    lhs.remoteRecvDispls[rank] = lhs.remoteRecvDispls[rank-1] +
+        lhs.remoteRecvCounts[rank-1];
+  }
+
+  std::vector<int> requested_global_nodes(n_remote);
+  lhs.remoteRecvIndices.resize(n_remote);
+  std::vector<int> next = lhs.remoteRecvDispls;
+  for (int a = 0; a < n_remote; a++) {
+    const int global_node = remoteColumnGlobalNodes(a);
+    const int pos = next[owner[global_node]]++;
+    requested_global_nodes[pos] = global_node;
+    lhs.remoteRecvIndices[pos] = a;
+  }
+
+  MPI_Alltoall(lhs.remoteRecvCounts.data(), 1, cm_mod::mpint,
+      lhs.remoteSendCounts.data(), 1, cm_mod::mpint, comm);
+  for (int rank = 1; rank < nTasks; rank++) {
+    lhs.remoteSendDispls[rank] = lhs.remoteSendDispls[rank-1] +
+        lhs.remoteSendCounts[rank-1];
+  }
+
+  const int n_send = lhs.remoteSendDispls.back() + lhs.remoteSendCounts.back();
+  std::vector<int> requested_from_this_rank(n_send);
+  MPI_Alltoallv(requested_global_nodes.data(), lhs.remoteRecvCounts.data(),
+      lhs.remoteRecvDispls.data(), cm_mod::mpint,
+      requested_from_this_rank.data(), lhs.remoteSendCounts.data(),
+      lhs.remoteSendDispls.data(), cm_mod::mpint, comm);
+
+  lhs.remoteSendLocalIndices.resize(n_send);
+  for (int a = 0; a < n_send; a++) {
+    const int local_node = gtlPtr(requested_from_this_rank[a]);
+    if (local_node < 0 || local_node >= lhs.mynNo) {
+      throw std::runtime_error("FSILS: Column-only ghost request was sent to a "
+          "rank that does not own global node " +
+          std::to_string(requested_from_this_rank[a]) + ".");
+    }
+    lhs.remoteSendLocalIndices[a] = local_node;
+  }
 }
 
 //----------------
@@ -368,6 +452,14 @@ void fsils_lhs_free(FSILS_lhsType& lhs)
   lhs.nNo    = 0;
   lhs.nnz    = 0;
   lhs.nFaces = 0;
+  lhs.remoteColumnGlobalNodes.clear();
+  lhs.hasRemoteColumns = false;
+  lhs.remoteRecvCounts.clear();
+  lhs.remoteRecvDispls.clear();
+  lhs.remoteSendCounts.clear();
+  lhs.remoteSendDispls.clear();
+  lhs.remoteRecvIndices.clear();
+  lhs.remoteSendLocalIndices.clear();
 
   //IF (ALLOCATED(lhs.colPtr)) DEALLOCATE(lhs.colPtr)
   //IF (ALLOCATED(lhs.rowPtr)) DEALLOCATE(lhs.rowPtr)
@@ -380,5 +472,3 @@ void fsils_lhs_free(FSILS_lhsType& lhs)
 
 
 };
-
-

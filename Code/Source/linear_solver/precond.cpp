@@ -16,14 +16,30 @@ namespace precond {
 ///
 /// Modifies: Val
 //
-void pos_mul(const Array<int>& rowPtr, const Vector<int>& colPtr, const int nNo, const int nnz, const int dof, Array<double>& Val, const Array<double>& W)
+void pos_mul(const fsi_linear_solver::FSILS_lhsType& lhs,
+    const Array<int>& rowPtr, const Vector<int>& colPtr, const int nNo,
+    const int nnz, const int dof, Array<double>& Val, const Array<double>& W)
 {
+  Array<double> remoteW;
+  fsi_linear_solver::fsils_import_remote(lhs, dof, W, remoteW);
+  Array<double> columnW(dof, nNo + remoteW.ncols());
+  for (int a = 0; a < nNo; a++) {
+    for (int i = 0; i < dof; i++) {
+      columnW(i,a) = W(i,a);
+    }
+  }
+  for (int a = 0; a < remoteW.ncols(); a++) {
+    for (int i = 0; i < dof; i++) {
+      columnW(i,nNo+a) = remoteW(i,a);
+    }
+  }
+
   switch (dof) {
     case 1: {
       for (int Ac = 0; Ac < nNo; Ac++) { 
         for (int i = rowPtr(0,Ac); i <= rowPtr(1,Ac); i++) {
           int a = colPtr(i);
-          Val(0,i) = Val(0,i)*W(0,a);
+          Val(0,i) = Val(0,i)*columnW(0,a);
         }
       }
     } break; 
@@ -33,8 +49,8 @@ void pos_mul(const Array<int>& rowPtr, const Vector<int>& colPtr, const int nNo,
         for (int i = rowPtr(0,Ac); i <= rowPtr(1,Ac); i++) {
           int a = colPtr(i);
           for (int j = 0; j < 3; j += 2) {
-            Val(j+0,i) = Val(j+0,i)*W(0,a);
-            Val(j+1,i) = Val(j+1,i)*W(1,a);
+            Val(j+0,i) = Val(j+0,i)*columnW(0,a);
+            Val(j+1,i) = Val(j+1,i)*columnW(1,a);
           }
         }
       }
@@ -45,9 +61,9 @@ void pos_mul(const Array<int>& rowPtr, const Vector<int>& colPtr, const int nNo,
         for (int i = rowPtr(0,Ac); i <= rowPtr(1,Ac); i++) {
           int a = colPtr(i);
           for (int j = 0; j < 7; j += 3) {
-            Val(j+0,i) = Val(j+0,i)*W(0,a);
-            Val(j+1,i) = Val(j+1,i)*W(1,a);
-            Val(j+2,i) = Val(j+2,i)*W(2,a);
+            Val(j+0,i) = Val(j+0,i)*columnW(0,a);
+            Val(j+1,i) = Val(j+1,i)*columnW(1,a);
+            Val(j+2,i) = Val(j+2,i)*columnW(2,a);
           }
         }
       }
@@ -58,10 +74,10 @@ void pos_mul(const Array<int>& rowPtr, const Vector<int>& colPtr, const int nNo,
         for (int i = rowPtr(0,Ac); i <= rowPtr(1,Ac); i++) {
           int a = colPtr(i);
           for (int j = 0; j < 13; j += 4) {
-            Val(j+0,i) = Val(j+0,i)*W(0,a);
-            Val(j+1,i) = Val(j+1,i)*W(1,a);
-            Val(j+2,i) = Val(j+2,i)*W(2,a);
-            Val(j+3,i) = Val(j+3,i)*W(3,a);
+            Val(j+0,i) = Val(j+0,i)*columnW(0,a);
+            Val(j+1,i) = Val(j+1,i)*columnW(1,a);
+            Val(j+2,i) = Val(j+2,i)*columnW(2,a);
+            Val(j+3,i) = Val(j+3,i)*columnW(3,a);
           }
         }
       }
@@ -74,7 +90,7 @@ void pos_mul(const Array<int>& rowPtr, const Vector<int>& colPtr, const int nNo,
           for (int b = 0; b < dof; b++) {
             int j = dof*(dof-1) + b;
             for (int k = b; k < j; k += dof) {
-              Val(k,i) = Val(k,i)*W(b,a);
+              Val(k,i) = Val(k,i)*columnW(b,a);
             }
           }
         }
@@ -213,7 +229,7 @@ void precond_diag(fsi_linear_solver::FSILS_lhsType& lhs, const Array<int>& rowPt
   }
 
   // Now post-multipling K by W: K = K*W
-  pos_mul(rowPtr, colPtr, lhs.nNo, lhs.nnz, dof, Val, W);
+  pos_mul(lhs, rowPtr, colPtr, lhs.nNo, lhs.nnz, dof, Val, W);
 
   for (int faIn = 0; faIn < lhs.nFaces; faIn++) {
     auto& face = lhs.face[faIn];
@@ -301,7 +317,7 @@ void precond_rcs(fsi_linear_solver::FSILS_lhsType& lhs, const Array<int>& rowPtr
 
   R = Wr * R;
 
-  pos_mul(rowPtr, colPtr, lhs.nNo, lhs.nnz, dof, Val, Wr);
+  pos_mul(lhs, rowPtr, colPtr, lhs.nNo, lhs.nnz, dof, Val, Wr);
 
   // Set diagonal term to one
   //
@@ -505,7 +521,7 @@ void precond_rcs(fsi_linear_solver::FSILS_lhsType& lhs, const Array<int>& rowPtr
 
     pre_mul(rowPtr, lhs.nNo, lhs.nnz, dof, Val, Wr);
 
-    pos_mul(rowPtr, colPtr, lhs.nNo, lhs.nnz, dof, Val, Wc);
+    pos_mul(lhs, rowPtr, colPtr, lhs.nNo, lhs.nnz, dof, Val, Wc);
 
     W1 = W1 * Wr;
     W2 = W2 * Wc;

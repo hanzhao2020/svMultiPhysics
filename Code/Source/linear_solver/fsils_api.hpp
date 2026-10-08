@@ -24,6 +24,12 @@ void fsils_commus(const FSILS_lhsType& lhs, Vector<double>& R);
 
 void fsils_commuv(const FSILS_lhsType& lhs, const int dof, Array<double>& R);
 
+void fsils_import_remote(const FSILS_lhsType& lhs, const Vector<double>& local,
+    Vector<double>& remote);
+
+void fsils_import_remote(const FSILS_lhsType& lhs, const int dof,
+    const Array<double>& local, Array<double>& remote);
+
 double fsils_cpu_t();
 
 void fsils_ls_create(FSILS_lsType& ls, LinearSolverType LS_type, double relTol = consts::double_inf, 
@@ -36,5 +42,4 @@ void fsils_solve(FSILS_lhsType& lhs, FSILS_lsType& ls, const int dof, Array<doub
 };
 
 #endif
-
 

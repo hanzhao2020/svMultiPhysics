@@ -12,12 +12,11 @@
 namespace fsi_linear_solver {
 
 void fsils_lhs_create(FSILS_lhsType& lhs, FSILS_commuType& commu, int gnNo, int nNo, int nnz, Vector<int>& gNodes,  
-       Vector<int>&rowPtr, Vector<int>&colPtr, int nFaces);
+       Vector<int>&rowPtr, Vector<int>&colPtr, int nFaces,
+       const Vector<int>& remoteColumnGlobalNodes);
 
 void fsils_lhs_free(FSILS_lhsType& lhs);
 
 };
 
 #endif
-
-

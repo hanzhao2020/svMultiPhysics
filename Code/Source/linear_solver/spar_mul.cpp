@@ -21,10 +21,15 @@ void fsils_spar_mul_ss(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
 {
   int nNo = lhs.nNo;
   KU = 0.0;
+  Vector<double> remote;
+  fsi_linear_solver::fsils_import_remote(lhs, U, remote);
+  auto value = [&](const int col) {
+    return col < nNo ? U(col) : remote(col - nNo);
+  };
 
   for (int i = 0; i < nNo; i++) {
     for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
-      KU(i) = KU(i) + K(j) * U(colPtr(j));
+      KU(i) = KU(i) + K(j) * value(colPtr(j));
     } 
   }
 
@@ -38,13 +43,18 @@ void fsils_spar_mul_sv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
 {
   int nNo = lhs.nNo;
   KU = 0.0;
+  Vector<double> remote;
+  fsi_linear_solver::fsils_import_remote(lhs, U, remote);
+  auto value = [&](const int col) {
+    return col < nNo ? U(col) : remote(col - nNo);
+  };
 
   switch (dof) {
 
     case 1:
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
-          KU(0,i) = KU(0,i) + K(0,j)*U(colPtr(j));
+          KU(0,i) = KU(0,i) + K(0,j)*value(colPtr(j));
         }
       }
     break; 
@@ -53,8 +63,8 @@ void fsils_spar_mul_sv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(0,i) = KU(0,i) + K(0,j)*U(col);
-          KU(1,i) = KU(1,i) + K(1,j)*U(col);
+          KU(0,i) = KU(0,i) + K(0,j)*value(col);
+          KU(1,i) = KU(1,i) + K(1,j)*value(col);
         }
       }
 
@@ -64,9 +74,9 @@ void fsils_spar_mul_sv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(0,i) += K(0,j) * U(col);
-          KU(1,i) += K(1,j) * U(col);
-          KU(2,i) += K(2,j) * U(col);
+          KU(0,i) += K(0,j) * value(col);
+          KU(1,i) += K(1,j) * value(col);
+          KU(2,i) += K(2,j) * value(col);
         }
       }
     } break; 
@@ -75,10 +85,10 @@ void fsils_spar_mul_sv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(0,i) = KU(0,i) + K(0,j)*U(col);
-          KU(1,i) = KU(1,i) + K(1,j)*U(col);
-          KU(2,i) = KU(2,i) + K(2,j)*U(col);
-          KU(3,i) = KU(3,i) + K(3,j)*U(col);
+          KU(0,i) = KU(0,i) + K(0,j)*value(col);
+          KU(1,i) = KU(1,i) + K(1,j)*value(col);
+          KU(2,i) = KU(2,i) + K(2,j)*value(col);
+          KU(3,i) = KU(3,i) + K(3,j)*value(col);
         }
       }
     break; 
@@ -88,7 +98,7 @@ void fsils_spar_mul_sv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
           for (int m = 0; m < KU.nrows(); m++) {
-            KU(m,i) = KU(m,i) + K(m,j) * U(col);
+            KU(m,i) = KU(m,i) + K(m,j) * value(col);
           }
         }
       }
@@ -104,13 +114,18 @@ void fsils_spar_mul_vs(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
 {
   int nNo = lhs.nNo;
   KU = 0.0;
+  Array<double> remote;
+  fsi_linear_solver::fsils_import_remote(lhs, dof, U, remote);
+  auto value = [&](const int component, const int col) {
+    return col < nNo ? U(component,col) : remote(component,col - nNo);
+  };
 
   switch (dof) {
 
     case 1:
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
-          KU(i) = KU(i) + K(0,j) * U(0,colPtr(j));
+          KU(i) = KU(i) + K(0,j) * value(0,colPtr(j));
         }
       }
     break; 
@@ -119,7 +134,7 @@ void fsils_spar_mul_vs(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(i) = KU(i) + K(0,j)*U(0,col) + K(1,j)*U(1,col);
+          KU(i) = KU(i) + K(0,j)*value(0,col) + K(1,j)*value(1,col);
         }
       }
     break; 
@@ -128,7 +143,7 @@ void fsils_spar_mul_vs(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(i) = KU(i) + K(0,j)*U(0,col) + K(1,j)*U(1,col) + K(2,j)*U(2,col);
+          KU(i) = KU(i) + K(0,j)*value(0,col) + K(1,j)*value(1,col) + K(2,j)*value(2,col);
         }
       }
     break; 
@@ -137,7 +152,7 @@ void fsils_spar_mul_vs(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(i) = KU(i) + K(0,j)*U(0,col) + K(1,j)*U(1,col) + K(2,j)*U(2,col) + K(3,j)*U(3,col);
+          KU(i) = KU(i) + K(0,j)*value(0,col) + K(1,j)*value(1,col) + K(2,j)*value(2,col) + K(3,j)*value(3,col);
         }
       }
     break; 
@@ -148,7 +163,7 @@ void fsils_spar_mul_vs(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
           int col = colPtr(j);
           double sum = 0.0;
           for (int m = 0; m < K.nrows(); m++) {
-            sum += K(m,j) * U(m,col);
+            sum += K(m,j) * value(m,col);
           }
           KU(i) = KU(i) + sum; 
           //KU(i) = KU(i) + SUM(K(:,j)*U(:,colPtr(j)))
@@ -166,13 +181,18 @@ void fsils_spar_mul_vv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
 {
   int nNo = lhs.nNo;
   KU = 0.0;
+  Array<double> remote;
+  fsi_linear_solver::fsils_import_remote(lhs, dof, U, remote);
+  auto value = [&](const int component, const int col) {
+    return col < nNo ? U(component,col) : remote(component,col - nNo);
+  };
 
   switch (dof) {
 
     case 1:
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
-          KU(0,i) = KU(0,i) + K(0,j)*U(0,colPtr(j));
+          KU(0,i) = KU(0,i) + K(0,j)*value(0,colPtr(j));
         }
       }
     break;
@@ -181,8 +201,8 @@ void fsils_spar_mul_vv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(0,i) = KU(0,i) + K(0,j)*U(0,col) + K(1,j)*U(1,col);
-          KU(1,i) = KU(1,i) + K(2,j)*U(0,col) + K(3,j)*U(1,col);
+          KU(0,i) = KU(0,i) + K(0,j)*value(0,col) + K(1,j)*value(1,col);
+          KU(1,i) = KU(1,i) + K(2,j)*value(0,col) + K(3,j)*value(1,col);
         }
       }
     break;
@@ -191,9 +211,9 @@ void fsils_spar_mul_vv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(0,i) = KU(0,i) + K(0,j)*U(0,col) + K(1,j)*U(1,col) + K(2,j)*U(2,col);
-          KU(1,i) = KU(1,i) + K(3,j)*U(0,col) + K(4,j)*U(1,col) + K(5,j)*U(2,col);
-          KU(2,i) = KU(2,i) + K(6,j)*U(0,col) + K(7,j)*U(1,col) + K(8,j)*U(2,col);
+          KU(0,i) = KU(0,i) + K(0,j)*value(0,col) + K(1,j)*value(1,col) + K(2,j)*value(2,col);
+          KU(1,i) = KU(1,i) + K(3,j)*value(0,col) + K(4,j)*value(1,col) + K(5,j)*value(2,col);
+          KU(2,i) = KU(2,i) + K(6,j)*value(0,col) + K(7,j)*value(1,col) + K(8,j)*value(2,col);
         }
       }
     break;
@@ -202,10 +222,10 @@ void fsils_spar_mul_vv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
       for (int i = 0; i < nNo; i++) {
         for (int j = rowPtr(0,i); j <= rowPtr(1,i); j++) {
           int col = colPtr(j);
-          KU(0,i) = KU(0,i) + K(0 ,j)*U(0,col) + K(1 ,j)*U(1,col) + K(2 ,j)*U(2,col) + K(3 ,j)*U(3,col);
-          KU(1,i) = KU(1,i) + K(4 ,j)*U(0,col) + K(5 ,j)*U(1,col) + K(6 ,j)*U(2,col) + K(7 ,j)*U(3,col);
-          KU(2,i) = KU(2,i) + K(8 ,j)*U(0,col) + K(9,j)*U(1,col) + K(10,j)*U(2,col) + K(11,j)*U(3,col);
-          KU(3,i) = KU(3,i) + K(12,j)*U(0,col) + K(13,j)*U(1,col) + K(14,j)*U(2,col) + K(15,j)*U(3,col);
+          KU(0,i) = KU(0,i) + K(0 ,j)*value(0,col) + K(1 ,j)*value(1,col) + K(2 ,j)*value(2,col) + K(3 ,j)*value(3,col);
+          KU(1,i) = KU(1,i) + K(4 ,j)*value(0,col) + K(5 ,j)*value(1,col) + K(6 ,j)*value(2,col) + K(7 ,j)*value(3,col);
+          KU(2,i) = KU(2,i) + K(8 ,j)*value(0,col) + K(9,j)*value(1,col) + K(10,j)*value(2,col) + K(11,j)*value(3,col);
+          KU(3,i) = KU(3,i) + K(12,j)*value(0,col) + K(13,j)*value(1,col) + K(14,j)*value(2,col) + K(15,j)*value(3,col);
         }
       }
     break;
@@ -219,7 +239,7 @@ void fsils_spar_mul_vv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
             int s = e - dof + 1;;
             double sum = 0.0;
             for (int k = 0; k < dof; k++) {
-              sum += K(k+s,j) * U(k,col);
+              sum += K(k+s,j) * value(k,col);
             }
             KU(l,i) = KU(l,i) + sum;
           }
@@ -231,5 +251,4 @@ void fsils_spar_mul_vv(FSILS_lhsType& lhs, const Array<int>& rowPtr, const Vecto
 }
 
 };
-
 

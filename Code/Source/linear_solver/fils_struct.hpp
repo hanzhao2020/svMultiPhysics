@@ -188,6 +188,19 @@ class FSILS_lhsType
     /// Mapping of nodes                    (USE)
     Vector<int> map;
 
+    /// Global IDs of matrix columns that are not ordinary local/ghost nodes.
+    Vector<int> remoteColumnGlobalNodes;
+
+    bool hasRemoteColumns = false;
+
+    /// All-to-all import plan for column-only ghost values.
+    std::vector<int> remoteRecvCounts;
+    std::vector<int> remoteRecvDispls;
+    std::vector<int> remoteSendCounts;
+    std::vector<int> remoteSendDispls;
+    std::vector<int> remoteRecvIndices;
+    std::vector<int> remoteSendLocalIndices;
+
     FSILS_commuType commu;
 
     std::vector<FSILS_cSType> cS;
@@ -265,4 +278,3 @@ class FSILS_lsType
 };
 
 #endif
-
