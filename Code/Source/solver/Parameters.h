@@ -900,6 +900,18 @@ class BoundaryConditionParameters : public ParameterLists
     Parameter<bool> zero_out_perimeter;
 
     Parameter<double> resistance;
+
+    // One-sided rigid plunger contact (Robin BC only): a flat, rigid, frictionless
+    // face moving along Plunger_direction by delta(t) from Plunger_stroke_file_path.
+    // Contact traction = max(0, k*g + c*dg/dt) * d where g is the penetration;
+    // k = Stiffness, c = Damping. Pushes only, never pulls.
+    Parameter<bool> plunger_contact;
+    VectorParameter<double> plunger_direction;
+    Parameter<std::string> plunger_stroke_file_path;
+    Parameter<double> plunger_initial_gap;
+    // Smoothing penetration eps: the contact force ramps up quadratically for
+    // 0 < g < eps (C1 contact law, avoids Newton active-set cycling). 0 = sharp.
+    Parameter<double> plunger_smoothing_gap;
 };
 
 /// @brief The OutputParameters class stores parameters for the

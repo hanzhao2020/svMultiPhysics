@@ -22,8 +22,11 @@
 #include "fsils_api.hpp"
 #include "fils_struct.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <functional>
+#include <iostream>
+#include <limits>
 #include <math.h>
 #include <sstream>
 #include <vector>
@@ -126,6 +129,82 @@ void face_match(ComMod& com_mod, faceType& lFa, faceType& gFa, Vector<int>& ptr)
 //---------
 // Read boundary condition data.
 //
+/// @brief Read the one-sided rigid plunger contact data of a Robin BC.
+///
+/// Stroke file format: first line = number of points n, then n lines "t delta"
+/// with t[0] = 0 and t strictly increasing; delta >= 0 is the travel of the face
+/// along Plunger_direction. The stroke repeats with period t[n-1].
+/// The face starts touching the most advanced point of the BC face (the apex),
+/// minus Plunger_initial_gap.
+//
+void read_plunger_contact(ComMod& com_mod, BoundaryConditionParameters* bc_params, const faceType& lFa, bcType& lBc)
+{
+  const int nsd = com_mod.nsd;
+  auto& pc = lBc.plunger;
+
+  auto dir = bc_params->plunger_direction();
+  if (dir.size() != (size_t)nsd) {
+    throw std::runtime_error("[read_plunger_contact] Plunger_direction must have " + std::to_string(nsd) +
+        " components (face '" + lFa.name + "').");
+  }
+  double nrm = 0.0;
+  for (auto v : dir) { nrm += v*v; }
+  nrm = sqrt(nrm);
+  if (nrm == 0.0) {
+    throw std::runtime_error("[read_plunger_contact] Plunger_direction is zero (face '" + lFa.name + "').");
+  }
+  pc.dir.resize(nsd);
+  for (int i = 0; i < nsd; i++) { pc.dir(i) = dir[i] / nrm; }
+
+  if (!bc_params->plunger_stroke_file_path.defined()) {
+    throw std::runtime_error("[read_plunger_contact] Plunger_stroke_file_path is required (face '" + lFa.name + "').");
+  }
+  auto file_name = bc_params->plunger_stroke_file_path.value();
+  std::ifstream fs(file_name);
+  if (!fs.is_open()) {
+    throw std::runtime_error("[read_plunger_contact] Cannot open stroke file '" + file_name + "'.");
+  }
+  int n = 0;
+  fs >> n;
+  if (n < 2) {
+    throw std::runtime_error("[read_plunger_contact] Stroke file '" + file_name + "' needs at least 2 points.");
+  }
+  pc.t.resize(n);
+  pc.delta.resize(n);
+  for (int i = 0; i < n; i++) {
+    if (!(fs >> pc.t(i) >> pc.delta(i))) {
+      throw std::runtime_error("[read_plunger_contact] Error reading point " + std::to_string(i+1) +
+          " of stroke file '" + file_name + "'.");
+    }
+    if (i == 0 && pc.t(0) != 0.0) {
+      throw std::runtime_error("[read_plunger_contact] The first time in '" + file_name + "' must be 0.");
+    }
+    if (i > 0 && pc.t(i) <= pc.t(i-1)) {
+      throw std::runtime_error("[read_plunger_contact] Times in '" + file_name + "' must be strictly increasing.");
+    }
+  }
+  pc.period = pc.t(n-1);
+
+  // Face starts at the apex of the BC face along dir (minimum of dir . x), minus the gap.
+  double qmin = std::numeric_limits<double>::max();
+  for (int a = 0; a < lFa.x.ncols(); a++) {
+    double q = 0.0;
+    for (int i = 0; i < nsd; i++) { q += pc.dir(i) * lFa.x(i,a); }
+    qmin = std::min(qmin, q);
+  }
+  pc.q0 = qmin - bc_params->plunger_initial_gap.value();
+  pc.eps = bc_params->plunger_smoothing_gap.value();
+  if (pc.eps < 0.0) {
+    throw std::runtime_error("[read_plunger_contact] Plunger_smoothing_gap must be >= 0 (face '" + lFa.name + "').");
+  }
+  pc.active = true;
+
+  std::cout << "Plunger contact on face '" << lFa.name << "': direction (" ;
+  for (int i = 0; i < nsd; i++) { std::cout << pc.dir(i) << (i < nsd-1 ? ", " : ")"); }
+  std::cout << ", " << n << " stroke points, period " << pc.period << ", q0 = " << pc.q0
+            << ", smoothing gap = " << pc.eps << std::endl;
+}
+
 void read_bc(Simulation* simulation, EquationParameters* eq_params, eqType& lEq, BoundaryConditionParameters* bc_params, bcType& lBc)
 {
   using namespace consts;
@@ -535,6 +614,14 @@ void read_bc(Simulation* simulation, EquationParameters* eq_params, eqType& lEq,
                                             com_mod.msh[lBc.iM].fa[lBc.iFa],
                                             simulation->logger);
     }
+
+    // One-sided rigid plunger contact
+    if (bc_params->plunger_contact.value()) {
+      read_plunger_contact(com_mod, bc_params, com_mod.msh[lBc.iM].fa[lBc.iFa], lBc);
+    }
+  } else if (bc_params->plunger_contact.value()) {
+    throw std::runtime_error("[read_bc] Plunger_contact is only valid for a Robin BC (face '" +
+        com_mod.msh[lBc.iM].fa[lBc.iFa].name + "').");
   }
 
   

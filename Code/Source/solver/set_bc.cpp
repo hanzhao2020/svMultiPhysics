@@ -1663,14 +1663,14 @@ void set_bc_neu_l(ComMod& com_mod, const CmMod& cm_mod, const bcType& lBc, const
   }
   // Now treat Robin BC (stiffness and damping) here
   if (lBc.robin_bc.is_initialized()) {
-    set_bc_rbnl(com_mod, lFa, lBc.robin_bc, solutions);
+    set_bc_rbnl(com_mod, cm_mod, lBc, lFa, lBc.robin_bc, solutions);
   }
 }
 
 /// @brief Set Robin BC contribution to residual and tangent
 //
-void set_bc_rbnl(ComMod& com_mod, const faceType& lFa, const RobinBoundaryCondition& robin_bc,
-  const SolutionStates& solutions)
+void set_bc_rbnl(ComMod& com_mod, const CmMod& cm_mod, const bcType& lBc, const faceType& lFa,
+  const RobinBoundaryCondition& robin_bc, const SolutionStates& solutions)
 {
   // Local aliases for solution arrays
   const auto& Do = solutions.old.get_displacement();
@@ -1704,6 +1704,15 @@ void set_bc_rbnl(ComMod& com_mod, const faceType& lFa, const RobinBoundaryCondit
   Vector<int> ptr(eNoN);
   Array<double> xl(nsd,eNoN), yl(nsd,eNoN), dl(nsd,eNoN), lR(dof,eNoN); 
   Array3<double> lK(dof*dof,eNoN,eNoN), lKd(nsd*dof,eNoN,eNoN);
+
+  // One-sided plunger contact: face position and velocity along d at this time
+  const auto& plunger = lBc.plunger;
+  double plunger_qp = 0.0, plunger_rate = 0.0;
+  if (plunger.active) {
+    plunger_qp = plunger.q0 + plunger.value(com_mod.time);
+    plunger_rate = plunger.rate(com_mod.time);
+  }
+  double contact_force = 0.0, contact_area = 0.0;
 
   for (int e = 0; e < lFa.nEl; e++) {
     cDmn = all_fun::domain(com_mod, com_mod.msh[iM], cEq, lFa.gE(e));
@@ -1766,13 +1775,67 @@ void set_bc_rbnl(ComMod& com_mod, const faceType& lFa, const RobinBoundaryCondit
 
       
       
-      h = ks_avg*u + cs_avg*ud;
-
-      if (robin_bc.normal_direction_only()) {
-        h = (h * nV) * nV;
+      if (plunger.active) {
+        // One-sided contact with a rigid flat plunger face moving along d.
+        // q  = d . x (current position of this point), q_p = q0 + delta(t),
+        // g  = q_p - q (penetration), dg/dt = delta'(t) - d . v.
+        // Contact traction t = f d with f = max(0, k g + c dg/dt), only where g > 0.
+        // Robin residual convention: lR += w N h with h = -t, so h = -f d and
+        // dh/du = k d d^T, dh/dv = c d d^T (same structure as the Robin tangent).
+        if (cPhys == EquationType::phys_ustruct) {
+          throw std::runtime_error("[set_bc_rbnl] Plunger_contact is not implemented for ustruct.");
+        }
+        const auto& d = plunger.dir;
+        double q = 0.0, vq = 0.0;
+        for (int a = 0; a < eNoN; a++) {
+          for (int i = 0; i < nsd; i++) {
+            q  += N(a) * d(i) * (xl(i,a) + dl(i,a));
+            vq += N(a) * d(i) * yl(i,a);
+          }
+        }
+        double gap_pen = plunger_qp - q;
+        double gdot = plunger_rate - vq;
+        if (gap_pen <= 0.0) {
+          continue;        // no contact at this point: no force, no tangent
+        }
+        // Contact law: f = k*phi(g) + c*phi'(g)*dg/dt with phi(g) = g (sharp) or,
+        // for eps > 0, the C1 quadratic ramp phi = g^2/(2 eps) for g < eps and
+        // g - eps/2 beyond. Force and stiffness then grow continuously from zero.
+        double phi = gap_pen, dphi = 1.0;
+        const double eps = plunger.eps;
+        if (eps > 0.0 && gap_pen < eps) {
+          phi  = 0.5 * gap_pen * gap_pen / eps;
+          dphi = gap_pen / eps;
+        } else if (eps > 0.0) {
+          phi  = gap_pen - 0.5 * eps;
+        }
+        double f = ks_avg * phi + cs_avg * dphi * gdot;
+        if (f <= 0.0) {
+          continue;        // no pulling (e.g. fast separation): no force, no tangent
+        }
+        h.resize(nsd);
+        for (int i = 0; i < nsd; i++) {
+          h(i) = -f * d(i);
+        }
+        // Tangent: dh/du = k*phi' d d^T, dh/dv = c*phi' d d^T. The Robin assembly below
+        // uses ks_avg/cs_avg with nDn, so fold phi' into nDn.
         for (int a = 0; a < nsd; a++) {
           for (int b = 0; b < nsd; b++) {
-            nDn(a,b) = nV(a)*nV(b);
+            nDn(a,b) = dphi * d(a)*d(b);
+          }
+        }
+        contact_force += w * f;
+        contact_area += w;
+
+      } else {
+        h = ks_avg*u + cs_avg*ud;
+
+        if (robin_bc.normal_direction_only()) {
+          h = (h * nV) * nV;
+          for (int a = 0; a < nsd; a++) {
+            for (int b = 0; b < nsd; b++) {
+              nDn(a,b) = nV(a)*nV(b);
+            }
           }
         }
       }
@@ -1919,6 +1982,22 @@ void set_bc_rbnl(ComMod& com_mod, const faceType& lFa, const RobinBoundaryCondit
 
   } // for int e = 0; e < lFa.nEl; e++
 
+  // Plunger diagnostics: total contact force and contact area (summed over processes).
+  // The values of the last evaluation in a time step are printed at the first
+  // evaluation of the next time step, i.e. once per step at the converged state.
+  if (plunger.active) {
+    contact_force = com_mod.cm.reduce(cm_mod, contact_force);
+    contact_area = com_mod.cm.reduce(cm_mod, contact_area);
+    // if (plunger.diag_step >= 0 && com_mod.cTS != plunger.diag_step && com_mod.cm.mas(cm_mod)) {
+    //   std::cout << "Plunger contact [" << lFa.name << "] step " << plunger.diag_step
+    //             << ": stroke " << plunger.value(com_mod.time - com_mod.dt)
+    //             << ", contact force " << plunger.diag_force
+    //             << ", contact area " << plunger.diag_area << std::endl;
+    // }
+    plunger.diag_force = contact_force;
+    plunger.diag_area = contact_area;
+    plunger.diag_step = com_mod.cTS;
+  }
 }
 
 /// @brief Set Traction BC

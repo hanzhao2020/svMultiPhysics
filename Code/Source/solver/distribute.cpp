@@ -758,6 +758,25 @@ void dist_bc(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm, bcType& lBc
     lBc.robin_bc.distribute(com_mod, cm_mod, cm, com_mod.msh[lBc.iM].fa[lBc.iFa]);
   }
 
+  // Communicating one-sided plunger contact data
+  //
+  cm.bcast(cm_mod, &lBc.plunger.active);
+  if (lBc.plunger.active) {
+    int n_stroke = lBc.plunger.t.size();
+    cm.bcast(cm_mod, &n_stroke);
+    if (is_slave) {
+      lBc.plunger.dir.resize(nsd);
+      lBc.plunger.t.resize(n_stroke);
+      lBc.plunger.delta.resize(n_stroke);
+    }
+    cm.bcast(cm_mod, lBc.plunger.dir);
+    cm.bcast(cm_mod, lBc.plunger.t);
+    cm.bcast(cm_mod, lBc.plunger.delta);
+    cm.bcast(cm_mod, &lBc.plunger.period);
+    cm.bcast(cm_mod, &lBc.plunger.q0);
+    cm.bcast(cm_mod, &lBc.plunger.eps);
+  }
+
   // Communicating Coupled BC
   //
   if (utils::btest(lBc.bType, static_cast<int>(BoundaryConditionType::bType_Coupled))) {

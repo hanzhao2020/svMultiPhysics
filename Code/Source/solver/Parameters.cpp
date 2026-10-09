@@ -593,6 +593,12 @@ BoundaryConditionParameters::BoundaryConditionParameters() {
   set_parameter("Zero_out_perimeter", false, !required, zero_out_perimeter);
 
   set_parameter("Resistance", 1.e5, !required, resistance);
+
+  set_parameter("Plunger_contact", false, !required, plunger_contact);
+  set_parameter("Plunger_direction", {}, !required, plunger_direction);
+  set_parameter("Plunger_stroke_file_path", "", !required, plunger_stroke_file_path);
+  set_parameter("Plunger_initial_gap", 0.0, !required, plunger_initial_gap);
+  set_parameter("Plunger_smoothing_gap", 0.0, !required, plunger_smoothing_gap);
 }
 
 void BoundaryConditionParameters::print_parameters() {

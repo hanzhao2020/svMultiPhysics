@@ -34,7 +34,9 @@
 
 #include "ArtificialNeuralNetMaterial.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -91,6 +93,61 @@ class rcrType
 
 /// @brief Boundary condition data type
 //
+/// @brief One-sided contact with a rigid, flat, frictionless plunger face that moves
+/// along the unit pressing direction 'dir' by a prescribed stroke delta(t).
+///
+/// For a point x (current position) on the BC face, its coordinate along dir is
+/// q = dir . x and the face position is q_p(t) = q0 + delta(t). The penetration is
+/// g = q_p - q and the contact traction on the structure is
+///   t = max(0, k g + c dg/dt) dir   (only where g > 0),
+/// with k, c the Robin stiffness and damping. Used through the Robin BC.
+class PlungerContact
+{
+  public:
+    bool active = false;
+    Vector<double> dir;          // unit pressing direction
+    Vector<double> t;            // stroke time points (t[0] = 0, increasing)
+    Vector<double> delta;        // stroke values [length]
+    double period = 0.0;         // = t[last]; the stroke repeats with this period
+    double q0 = 0.0;             // face position along dir at delta = 0
+    double eps = 0.0;            // smoothing penetration (0 = sharp max(0, g))
+
+    // Diagnostics (last evaluation): total contact force and contact area.
+    mutable double diag_force = 0.0;
+    mutable double diag_area = 0.0;
+    mutable int diag_step = -1;
+
+    /// @brief Stroke at time 'time' (linear interpolation, periodic).
+    double value(double time) const
+    {
+      int i = 0;
+      double tau = 0.0;
+      locate(time, i, tau);
+      return (1.0 - tau) * delta(i) + tau * delta(i+1);
+    }
+
+    /// @brief Stroke rate at time 'time' (slope of the current segment).
+    double rate(double time) const
+    {
+      int i = 0;
+      double tau = 0.0;
+      locate(time, i, tau);
+      return (delta(i+1) - delta(i)) / (t(i+1) - t(i));
+    }
+
+  private:
+    void locate(double time, int& i, double& tau) const
+    {
+      int n = t.size();
+      double tt = (period > 0.0) ? std::fmod(time, period) : time;
+      if (tt < 0.0) { tt += period; }
+      i = 0;
+      while (i < n - 2 && t(i+1) < tt) { i++; }
+      tau = (tt - t(i)) / (t(i+1) - t(i));
+      tau = std::min(1.0, std::max(0.0, tau));
+    }
+};
+
 class bcType
 {
   public:
@@ -167,6 +224,9 @@ class bcType
 
     // Robin BC class
     RobinBoundaryCondition robin_bc;
+
+    /// @brief One-sided rigid plunger contact (Robin BC with Plunger_contact)
+    PlungerContact plunger;
 
     // Coupled BC class
     CoupledBoundaryCondition coupled_bc;
