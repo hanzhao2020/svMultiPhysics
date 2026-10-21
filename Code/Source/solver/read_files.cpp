@@ -23,6 +23,7 @@
 #include "fils_struct.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -142,7 +143,29 @@ void read_plunger_contact(ComMod& com_mod, BoundaryConditionParameters* bc_param
   const int nsd = com_mod.nsd;
   auto& pc = lBc.plunger;
 
+  std::string mode = bc_params->plunger_direction_mode.value();
+  std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+  if (mode == "fixed") {
+    pc.normal_mode = 0;
+  } else if (mode == "normal_inward" || mode == "inward") {
+    pc.normal_mode = -1;
+  } else if (mode == "normal_outward" || mode == "outward") {
+    pc.normal_mode = 1;
+  } else if (mode == "radial_inward") {
+    pc.normal_mode = -2;
+  } else if (mode == "radial_outward") {
+    pc.normal_mode = 2;
+  } else {
+    throw std::runtime_error("[read_plunger_contact] Unknown Plunger_direction_mode '" +
+        bc_params->plunger_direction_mode.value() + "' (use Fixed, Normal_inward, Normal_outward, Radial_inward or Radial_outward).");
+  }
+  pc.gap0 = bc_params->plunger_initial_gap.value();
+
   auto dir = bc_params->plunger_direction();
+  if (pc.normal_mode != 0 && dir.size() == 0) {
+    dir.assign(nsd, 0.0);                 // not used in the normal modes
+    dir[0] = 1.0;
+  }
   if (dir.size() != (size_t)nsd) {
     throw std::runtime_error("[read_plunger_contact] Plunger_direction must have " + std::to_string(nsd) +
         " components (face '" + lFa.name + "').");
@@ -194,13 +217,60 @@ void read_plunger_contact(ComMod& com_mod, BoundaryConditionParameters* bc_param
   }
   pc.q0 = qmin - bc_params->plunger_initial_gap.value();
   pc.eps = bc_params->plunger_smoothing_gap.value();
+
+  // Radial modes: ring axis and initial radius (largest / smallest face radius)
+  if ((pc.normal_mode == 2 || pc.normal_mode == -2)) {
+    auto ap = bc_params->plunger_axis_point();
+    auto ad = bc_params->plunger_axis_direction();
+    if (ap.size() == 0) { ap.assign(nsd, 0.0); }
+    if (ad.size() == 0) { ad.assign(nsd, 0.0); ad[0] = 1.0; }
+    if (ap.size() != (size_t)nsd || ad.size() != (size_t)nsd) {
+      throw std::runtime_error("[read_plunger_contact] Plunger_axis_point/direction must have " +
+          std::to_string(nsd) + " components (face '" + lFa.name + "').");
+    }
+    double an = 0.0;
+    for (auto v : ad) { an += v*v; }
+    an = sqrt(an);
+    if (an == 0.0) {
+      throw std::runtime_error("[read_plunger_contact] Plunger_axis_direction is zero (face '" + lFa.name + "').");
+    }
+    pc.axis_pt.resize(nsd);
+    pc.axis_dir.resize(nsd);
+    for (int i = 0; i < nsd; i++) { pc.axis_pt(i) = ap[i]; pc.axis_dir(i) = ad[i] / an; }
+    double rmax = 0.0, rmin = std::numeric_limits<double>::max();
+    for (int a = 0; a < lFa.x.ncols(); a++) {
+      double s = 0.0;
+      for (int i = 0; i < nsd; i++) { s += (lFa.x(i,a) - pc.axis_pt(i)) * pc.axis_dir(i); }
+      double r2 = 0.0;
+      for (int i = 0; i < nsd; i++) {
+        double ri = lFa.x(i,a) - pc.axis_pt(i) - s * pc.axis_dir(i);
+        r2 += ri*ri;
+      }
+      rmax = std::max(rmax, sqrt(r2));
+      rmin = std::min(rmin, sqrt(r2));
+    }
+    pc.R0 = (pc.normal_mode < 0) ? rmax : rmin;
+  }
   if (pc.eps < 0.0) {
     throw std::runtime_error("[read_plunger_contact] Plunger_smoothing_gap must be >= 0 (face '" + lFa.name + "').");
   }
   pc.active = true;
 
-  std::cout << "Plunger contact on face '" << lFa.name << "': direction (" ;
-  for (int i = 0; i < nsd; i++) { std::cout << pc.dir(i) << (i < nsd-1 ? ", " : ")"); }
+  std::cout << "Plunger contact on face '" << lFa.name << "': ";
+  if (pc.normal_mode == 0) {
+    std::cout << "fixed direction (";
+    for (int i = 0; i < nsd; i++) { std::cout << pc.dir(i) << (i < nsd-1 ? ", " : ")"); }
+  } else if ((pc.normal_mode == 1 || pc.normal_mode == -1)) {
+    std::cout << (pc.normal_mode < 0 ? "along the inward surface normal" : "along the outward surface normal")
+              << ", initial gap " << pc.gap0;
+  } else {
+    std::cout << (pc.normal_mode < 0 ? "radial ring (inward)" : "radial mandrel (outward)")
+              << ", axis point (";
+    for (int i = 0; i < nsd; i++) { std::cout << pc.axis_pt(i) << (i < nsd-1 ? ", " : ")"); }
+    std::cout << ", axis direction (";
+    for (int i = 0; i < nsd; i++) { std::cout << pc.axis_dir(i) << (i < nsd-1 ? ", " : ")"); }
+    std::cout << ", R0 = " << pc.R0 << ", initial gap " << pc.gap0;
+  }
   std::cout << ", " << n << " stroke points, period " << pc.period << ", q0 = " << pc.q0
             << ", smoothing gap = " << pc.eps << std::endl;
 }

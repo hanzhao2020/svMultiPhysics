@@ -775,6 +775,17 @@ void dist_bc(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm, bcType& lBc
     cm.bcast(cm_mod, &lBc.plunger.period);
     cm.bcast(cm_mod, &lBc.plunger.q0);
     cm.bcast(cm_mod, &lBc.plunger.eps);
+    cm.bcast(cm_mod, &lBc.plunger.normal_mode);
+    cm.bcast(cm_mod, &lBc.plunger.gap0);
+    if ((lBc.plunger.normal_mode == 2 || lBc.plunger.normal_mode == -2)) {
+      if (is_slave) {
+        lBc.plunger.axis_pt.resize(nsd);
+        lBc.plunger.axis_dir.resize(nsd);
+      }
+      cm.bcast(cm_mod, lBc.plunger.axis_pt);
+      cm.bcast(cm_mod, lBc.plunger.axis_dir);
+      cm.bcast(cm_mod, &lBc.plunger.R0);
+    }
   }
 
   // Communicating Coupled BC

@@ -599,6 +599,9 @@ BoundaryConditionParameters::BoundaryConditionParameters() {
   set_parameter("Plunger_stroke_file_path", "", !required, plunger_stroke_file_path);
   set_parameter("Plunger_initial_gap", 0.0, !required, plunger_initial_gap);
   set_parameter("Plunger_smoothing_gap", 0.0, !required, plunger_smoothing_gap);
+  set_parameter("Plunger_direction_mode", "Fixed", !required, plunger_direction_mode);
+  set_parameter("Plunger_axis_point", {}, !required, plunger_axis_point);
+  set_parameter("Plunger_axis_direction", {}, !required, plunger_axis_direction);
 }
 
 void BoundaryConditionParameters::print_parameters() {

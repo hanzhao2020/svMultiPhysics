@@ -1785,16 +1785,87 @@ void set_bc_rbnl(ComMod& com_mod, const CmMod& cm_mod, const bcType& lBc, const 
         if (cPhys == EquationType::phys_ustruct) {
           throw std::runtime_error("[set_bc_rbnl] Plunger_contact is not implemented for ustruct.");
         }
-        const auto& d = plunger.dir;
-        double q = 0.0, vq = 0.0;
-        for (int a = 0; a < eNoN; a++) {
-          for (int i = 0; i < nsd; i++) {
-            q  += N(a) * d(i) * (xl(i,a) + dl(i,a));
-            vq += N(a) * d(i) * yl(i,a);
+        Vector<double> d(nsd);
+        double gap_pen = 0.0, gdot = 0.0;
+        if (plunger.normal_mode == 0) {
+          // Fixed direction: flat face at q_p = q0 + delta(t); g = q_p - d . (X + u)
+          d = plunger.dir;
+          double q = 0.0, vq = 0.0;
+          for (int a = 0; a < eNoN; a++) {
+            for (int i = 0; i < nsd; i++) {
+              q  += N(a) * d(i) * (xl(i,a) + dl(i,a));
+              vq += N(a) * d(i) * yl(i,a);
+            }
           }
+          gap_pen = plunger_qp - q;
+          gdot = plunger_rate - vq;
+        } else if ((plunger.normal_mode == 2 || plunger.normal_mode == -2)) {
+          // Radial modes: rigid circular ring (inward) or mandrel (outward) coaxial with
+          // the axis; push along the CURRENT radial direction (frictionless, torque-free).
+          const auto& ap = plunger.axis_pt;
+          const auto& ad = plunger.axis_dir;
+          Vector<double> xr(nsd), vv(nsd);
+          for (int a = 0; a < eNoN; a++) {
+            for (int i = 0; i < nsd; i++) {
+              xr(i) += N(a) * (xl(i,a) + dl(i,a));
+              vv(i) += N(a) * yl(i,a);
+            }
+          }
+          double s = 0.0;
+          for (int i = 0; i < nsd; i++) { xr(i) -= ap(i); s += xr(i) * ad(i); }
+          for (int i = 0; i < nsd; i++) { xr(i) -= s * ad(i); }        // radial vector
+          double r = utils::norm(xr);
+          if (r <= 0.0) {
+            continue;
+          }
+          double sgn = (plunger.normal_mode < 0) ? -1.0 : 1.0;          // d = sgn * e_r
+          for (int i = 0; i < nsd; i++) { d(i) = sgn * xr(i) / r; }
+          double delta_t = plunger_qp - plunger.q0;
+          double R_ring = (plunger.normal_mode < 0) ? plunger.R0 + plunger.gap0 - delta_t
+                                                     : plunger.R0 - plunger.gap0 + delta_t;
+          gap_pen = (plunger.normal_mode < 0) ? r - R_ring : R_ring - r;
+          double vd = 0.0;
+          for (int i = 0; i < nsd; i++) { vd += d(i) * vv(i); }
+          gdot = plunger_rate - vd;
+        } else {
+          // Normal modes: d0 = +/- reference outward normal n0 at this point.
+          // n0 from the reference tangents, oriented like the (outward) normal nV.
+          Vector<double> n0(nsd);
+          if (nsd == 3) {
+            Vector<double> t1(3), t2(3);
+            for (int a = 0; a < eNoN; a++) {
+              for (int i = 0; i < 3; i++) {
+                t1(i) += Nx(0,a) * xl(i,a);
+                t2(i) += Nx(1,a) * xl(i,a);
+              }
+            }
+            n0(0) = t1(1)*t2(2) - t1(2)*t2(1);
+            n0(1) = t1(2)*t2(0) - t1(0)*t2(2);
+            n0(2) = t1(0)*t2(1) - t1(1)*t2(0);
+          } else {
+            Vector<double> t1(2);
+            for (int a = 0; a < eNoN; a++) {
+              for (int i = 0; i < 2; i++) { t1(i) += Nx(0,a) * xl(i,a); }
+            }
+            n0(0) = t1(1);
+            n0(1) = -t1(0);
+          }
+          double n0n = utils::norm(n0);
+          if (n0n > 0.0) { n0 = n0 / n0n; }
+          if (n0 * nV < 0.0) {
+            for (int i = 0; i < nsd; i++) { n0(i) = -n0(i); }
+          }
+          for (int i = 0; i < nsd; i++) { d(i) = plunger.normal_mode * n0(i); }
+          double ud = 0.0, vd = 0.0;
+          for (int a = 0; a < eNoN; a++) {
+            for (int i = 0; i < nsd; i++) {
+              ud += N(a) * d(i) * dl(i,a);
+              vd += N(a) * d(i) * yl(i,a);
+            }
+          }
+          gap_pen = (plunger_qp - plunger.q0) - plunger.gap0 - ud;     // delta(t) - gap0 - d0 . u
+          gdot = plunger_rate - vd;
         }
-        double gap_pen = plunger_qp - q;
-        double gdot = plunger_rate - vq;
         if (gap_pen <= 0.0) {
           continue;        // no contact at this point: no force, no tangent
         }

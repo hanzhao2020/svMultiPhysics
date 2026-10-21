@@ -101,6 +101,19 @@ class rcrType
 /// g = q_p - q and the contact traction on the structure is
 ///   t = max(0, k g + c dg/dt) dir   (only where g > 0),
 /// with k, c the Robin stiffness and damping. Used through the Robin BC.
+///
+/// Normal modes (normal_mode = -1 inward, +1 outward): at each point the push acts
+/// along d0 = normal_mode * n0, with n0 the outward unit normal of the face in the
+/// reference configuration. The contact surface is the reference face offset by
+/// delta(t) - gap0 along d0 (a conforming rigid cuff/ring), so the penetration is
+/// g = delta(t) - gap0 - d0 . u and the traction is max(0, k g + c dg/dt) d0.
+///
+/// Radial modes (normal_mode = -2 inward ring, +2 outward mandrel): a rigid circular
+/// surface coaxial with axis (axis_pt, axis_dir) of radius R(t) = R0 + gap0 - delta(t)
+/// (inward) or R0 - gap0 + delta(t) (outward). With r the current distance of the point
+/// from the axis and e_r its current radial unit vector, g = r - R (inward) or R - r
+/// (outward), and the push acts along d = -e_r (inward) or +e_r (outward). Frictionless
+/// and torque-free.
 class PlungerContact
 {
   public:
@@ -111,6 +124,12 @@ class PlungerContact
     double period = 0.0;         // = t[last]; the stroke repeats with this period
     double q0 = 0.0;             // face position along dir at delta = 0
     double eps = 0.0;            // smoothing penetration (0 = sharp max(0, g))
+    int normal_mode = 0;         // 0: fixed 'dir'; -1/+1: inward/outward reference normal;
+                                 // -2/+2: radial inward/outward from the ring axis
+    double gap0 = 0.0;           // initial gap (normal and radial modes)
+    Vector<double> axis_pt;      // radial modes: point on the ring axis
+    Vector<double> axis_dir;     // radial modes: unit axis direction
+    double R0 = 0.0;             // radial modes: ring radius at delta = 0 (face max/min radius)
 
     // Diagnostics (last evaluation): total contact force and contact area.
     mutable double diag_force = 0.0;

@@ -912,6 +912,17 @@ class BoundaryConditionParameters : public ParameterLists
     // Smoothing penetration eps: the contact force ramps up quadratically for
     // 0 < g < eps (C1 contact law, avoids Newton active-set cycling). 0 = sharp.
     Parameter<double> plunger_smoothing_gap;
+    // Direction of the contact push:
+    //   "Fixed"          : rigid flat face moving along Plunger_direction (default)
+    //   "Normal_inward"  : at each point, along the inward (reference) surface normal,
+    //                      i.e. a conforming rigid cuff contracting by delta(t)
+    //   "Normal_outward" : along the outward (reference) surface normal
+    //   "Radial_inward"  : rigid circular ring around Plunger_axis_*; pushes radially
+    //                      inward from the axis at the current position (torque-free)
+    //   "Radial_outward" : rigid circular mandrel; pushes radially outward
+    Parameter<std::string> plunger_direction_mode;
+    VectorParameter<double> plunger_axis_point;       // a point on the ring axis (default origin)
+    VectorParameter<double> plunger_axis_direction;   // ring axis direction (default (1,0,0))
 };
 
 /// @brief The OutputParameters class stores parameters for the
