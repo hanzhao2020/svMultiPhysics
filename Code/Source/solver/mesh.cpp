@@ -14,6 +14,7 @@
 #include "utils.h"
 
 #include <array>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <math.h>
@@ -65,6 +66,54 @@ void construct_mesh(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const S
   Array<double> ksix(nsd,nsd), bfl(nsd,eNoN);
   int n_inverted = 0;
 
+  // Jacobian-based stiffening exponent and the weight of the relaxation toward the
+  // original-mesh (total) solution at this time (incremental form only)
+  const double chi = eq.mesh_stiff_exp;
+  const double alpha = eq.mesh_total_disp ? 0.0 : eq.mesh_relax.value(com_mod.time);
+  Array<double> xl0, dl0, lR0;
+  Array3<double> lK0;
+  if (alpha > 0.0) {
+    xl0.resize(nsd,eNoN);
+    dl0.resize(tDof,eNoN);
+    lR0.resize(dof,eNoN);
+    lK0.resize(dof*dof,eNoN,eNoN);
+  }
+
+  // Element residual and tangent of the pseudo-elastic mesh problem with reference
+  // coordinates x_ref and displacement d_ref (Gauss integration).
+  auto integrate = [&](const int e, Array<double>& x_ref, const Array<double>& d_ref,
+                       Array<double>& R, Array3<double>& K) {
+    R = 0.0;
+    K = 0.0;
+    double Jac{0.0};
+
+    for (int g = 0; g < lM.nG; g++) {
+      if (g == 0 || !lM.lShpF) {
+        auto Nx_g = lM.Nx.rslice(g);
+        nn::gnn(eNoN, nsd, nsd, Nx_g, x_ref, Nx, Jac, ksix);
+        if (utils::is_zero(Jac)) {
+          throw std::runtime_error("[construct_mesh] Jacobian for element " + std::to_string(e) + " is < 0.");
+        }
+      }
+
+      // The weight leaves out Jac (chi = 1), so the stiffness scales with 1/(element size);
+      // otherwise w*|Jac|^(1-chi) gives a stiffness ~ (element size)^(-chi).
+      double w = lM.w(g);
+      if (chi != 1.0) {
+        w *= std::pow(std::abs(Jac), 1.0 - chi);
+      }
+      N = lM.N.col(g);
+      pS0l = 0.0;
+
+      if (nsd == 3) {
+        l_elas::l_elas_3d(com_mod, eNoN, w, N, Nx, al, d_ref, bfl, pS0l, pSl, R, K);
+
+      } else if (nsd == 2) {
+        l_elas::l_elas_2d(com_mod, eNoN, w, N, Nx, al, d_ref, bfl, pS0l, pSl, R, K);
+      }
+    }
+  };
+
   for (int e = 0; e < lM.nEl; e++) {
     // Update domain and proceed if domain phys and eqn phys match
     cDmn = all_fun::domain(com_mod, lM, cEq, e);
@@ -104,6 +153,12 @@ void construct_mesh(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const S
     //    the total displacement D. The mesh is then a (linear) function of the
     //    current boundary displacement only, so it does not drift under cyclic
     //    boundary motion.
+    //  - Mesh_relaxation_file_path (incremental + relaxation): the incremental and
+    //    the total forms blended with the weight alpha(t), see MeshRelaxation.
+    if (alpha > 0.0) {
+      xl0 = xl;
+      dl0 = dl;
+    }
     if (!eq.mesh_total_disp) {
       for (int i = 0; i < nsd; i++) {
         for (int j = 0; j < eNoN; j++) {
@@ -132,28 +187,21 @@ void construct_mesh(ComMod& com_mod, CepMod& cep_mod, const mshType& lM, const S
 
     // Gauss integration
     //
-    lR = 0.0;
-    lK = 0.0;
-    double Jac{0.0};
+    integrate(e, xl, dl, lR, lK);
 
-    for (int g = 0; g < lM.nG; g++) {
-      if (g == 0 || !lM.lShpF) {
-        auto Nx_g = lM.Nx.rslice(g);
-        nn::gnn(eNoN, nsd, nsd, Nx_g, xl, Nx, Jac, ksix);
-        if (utils::is_zero(Jac)) {
-          throw std::runtime_error("[construct_mesh] Jacobian for element " + std::to_string(e) + " is < 0.");
+    // Relaxation: (1 - alpha) * incremental + alpha * total (original mesh, total D).
+    // Both forms have the same unknown D, so the blended tangent is exact.
+    if (alpha > 0.0) {
+      integrate(e, xl0, dl0, lR0, lK0);
+      for (int a = 0; a < eNoN; a++) {
+        for (int i = 0; i < dof; i++) {
+          lR(i,a) = (1.0 - alpha) * lR(i,a) + alpha * lR0(i,a);
         }
-      }
-
-      double w = lM.w(g);
-      N = lM.N.col(g);
-      pS0l = 0.0;
-
-      if (nsd == 3) {
-        l_elas::l_elas_3d(com_mod, eNoN, w, N, Nx, al, dl, bfl, pS0l, pSl, lR, lK);
-
-      } else if (nsd == 2) {
-        l_elas::l_elas_2d(com_mod, eNoN, w, N, Nx, al, dl, bfl, pS0l, pSl, lR, lK);
+        for (int b = 0; b < eNoN; b++) {
+          for (int i = 0; i < dof*dof; i++) {
+            lK(i,a,b) = (1.0 - alpha) * lK(i,a,b) + alpha * lK0(i,a,b);
+          }
+        }
       }
     }
 

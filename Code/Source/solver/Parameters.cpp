@@ -2630,6 +2630,10 @@ EquationParameters::EquationParameters() {
                 explicit_geometric_coupling);
   set_parameter("Use_original_mesh_reference", false, !required,
                 use_original_mesh_reference);
+  set_parameter("Mesh_stiffening_exponent", 1.0, !required,
+                mesh_stiffening_exponent);
+  set_parameter("Mesh_relaxation_file_path", "", !required,
+                mesh_relaxation_file_path);
 }
 
 void EquationParameters::print_parameters() {

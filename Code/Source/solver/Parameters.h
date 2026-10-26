@@ -1818,6 +1818,17 @@ class EquationParameters : public ParameterLists
     // boundary motion).
     Parameter<bool> use_original_mesh_reference;
 
+    // Mesh equation only: Jacobian-based stiffening exponent chi. Each element's
+    // stiffness scales as (element volume)^(-chi): chi = 0 is a uniform pseudo-material,
+    // 1 (default) is the original behaviour, > 1 protects small elements more.
+    Parameter<double> mesh_stiffening_exponent;
+
+    // Mesh equation only (incremental form): relaxation schedule toward the
+    // original-mesh solution. File: first line = number of points n, then n lines
+    // "t alpha" with t[0] = 0, t increasing, 0 <= alpha <= 1; repeats with period t[n-1].
+    // The equation solved is (1-alpha) K(x_n)(D - D_n) + alpha K(X_0) D = 0.
+    Parameter<std::string> mesh_relaxation_file_path;
+
     // Sub-element parameters.
     //
     std::vector<BodyForceParameters*> body_forces;

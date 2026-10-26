@@ -1499,6 +1499,19 @@ void dist_eq(ComMod& com_mod, const CmMod& cm_mod, const cmType& cm, const std::
   cm.bcast(cm_mod, &lEq.assmTLS);
   cm.bcast(cm_mod, &lEq.expl_geom_cpl);
   cm.bcast(cm_mod, &lEq.mesh_total_disp);
+  cm.bcast(cm_mod, &lEq.mesh_stiff_exp);
+  cm.bcast(cm_mod, &lEq.mesh_relax.active);
+  if (lEq.mesh_relax.active) {
+    int n_relax = lEq.mesh_relax.t.size();
+    cm.bcast(cm_mod, &n_relax);
+    if (cm.slv(cm_mod)) {
+      lEq.mesh_relax.t.resize(n_relax);
+      lEq.mesh_relax.alpha.resize(n_relax);
+    }
+    cm.bcast(cm_mod, lEq.mesh_relax.t);
+    cm.bcast(cm_mod, lEq.mesh_relax.alpha);
+    cm.bcast(cm_mod, &lEq.mesh_relax.period);
+  }
 
   #ifdef dist_eq
   dmsg << "lEq.nOutput: " << lEq.nOutput;

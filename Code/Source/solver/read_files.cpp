@@ -275,6 +275,46 @@ void read_plunger_contact(ComMod& com_mod, BoundaryConditionParameters* bc_param
             << ", smoothing gap = " << pc.eps << std::endl;
 }
 
+/// @brief Read the relaxation schedule of the incremental mesh motion (Mesh_relaxation_file_path).
+///
+/// File format: first line = number of points n, then n lines "t alpha" with t[0] = 0,
+/// t strictly increasing and 0 <= alpha <= 1. The schedule repeats with period t[n-1].
+//
+void read_mesh_relaxation(const std::string& file_name, MeshRelaxation& mr)
+{
+  std::ifstream fs(file_name);
+  if (!fs.is_open()) {
+    throw std::runtime_error("[read_mesh_relaxation] Cannot open mesh relaxation file '" + file_name + "'.");
+  }
+  int n = 0;
+  fs >> n;
+  if (n < 2) {
+    throw std::runtime_error("[read_mesh_relaxation] Mesh relaxation file '" + file_name + "' needs at least 2 points.");
+  }
+  mr.t.resize(n);
+  mr.alpha.resize(n);
+  for (int i = 0; i < n; i++) {
+    if (!(fs >> mr.t(i) >> mr.alpha(i))) {
+      throw std::runtime_error("[read_mesh_relaxation] Error reading point " + std::to_string(i+1) +
+          " of mesh relaxation file '" + file_name + "'.");
+    }
+    if (i == 0 && mr.t(0) != 0.0) {
+      throw std::runtime_error("[read_mesh_relaxation] The first time in '" + file_name + "' must be 0.");
+    }
+    if (i > 0 && mr.t(i) <= mr.t(i-1)) {
+      throw std::runtime_error("[read_mesh_relaxation] Times in '" + file_name + "' must be strictly increasing.");
+    }
+    if (mr.alpha(i) < 0.0 || mr.alpha(i) > 1.0) {
+      throw std::runtime_error("[read_mesh_relaxation] Relaxation weights in '" + file_name + "' must be in [0, 1].");
+    }
+  }
+  mr.period = mr.t(n-1);
+  mr.active = true;
+
+  std::cout << "Mesh relaxation toward the original mesh: " << n << " points, period " << mr.period
+            << ", max weight " << mr.alpha.max() << std::endl;
+}
+
 void read_bc(Simulation* simulation, EquationParameters* eq_params, eqType& lEq, BoundaryConditionParameters* bc_params, bcType& lBc)
 {
   using namespace consts;
@@ -1815,6 +1855,14 @@ void read_eq(Simulation* simulation, EquationParameters* eq_params, eqType& lEq)
   lEq.tol = eq_params->tolerance.value();
   lEq.expl_geom_cpl = eq_params->explicit_geometric_coupling.value();
   lEq.mesh_total_disp = eq_params->use_original_mesh_reference.value();
+  lEq.mesh_stiff_exp = eq_params->mesh_stiffening_exponent.value();
+  if (lEq.mesh_stiff_exp < 0.0) {
+    throw std::runtime_error("Mesh_stiffening_exponent must be >= 0.");
+  }
+  auto relax_file = eq_params->mesh_relaxation_file_path.value();
+  if (!relax_file.empty()) {
+    read_mesh_relaxation(relax_file, lEq.mesh_relax);
+  }
 
   // Initialize coupled BC.
   //
@@ -2199,9 +2247,16 @@ void read_files(Simulation* simulation, const std::string& file_name)
         throw std::runtime_error("mesh equation can only be specified after FSI equation");
       }
       // Use the explicit geometry coupling flag of the FSI equation.
-      eq.expl_geom_cpl = com_mod.eq[0].expl_geom_cpl; 
+      eq.expl_geom_cpl = com_mod.eq[0].expl_geom_cpl;
+      if (eq.mesh_total_disp && eq.mesh_relax.active) {
+        throw std::runtime_error("Mesh_relaxation_file_path needs the incremental mesh update "
+            "(Use_original_mesh_reference false).");
+      }
     } else if (eq.mesh_total_disp) {
       throw std::runtime_error("Use_original_mesh_reference is only valid for the mesh equation.");
+    } else if (eq.mesh_relax.active || eq.mesh_stiff_exp != 1.0) {
+      throw std::runtime_error("Mesh_stiffening_exponent and Mesh_relaxation_file_path are only valid "
+          "for the mesh equation.");
     }
   }
   #ifdef debug_read_files

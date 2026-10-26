@@ -167,6 +167,37 @@ class PlungerContact
     }
 };
 
+/// @brief Relaxation of the incremental mesh motion toward the original-mesh solution.
+///
+/// With weight alpha(t) in [0,1] the mesh equation solved is
+///   (1 - alpha) K(x_n) (D - D_n) + alpha K(X_0) D = 0,
+/// i.e. a blend of the incremental form (alpha = 0) and the total form on the original
+/// mesh (alpha = 1, same as Use_original_mesh_reference). Held at a constant boundary, the
+/// mesh converges to the original-mesh solution, so a small alpha while the boundary is near
+/// its rest shape removes the drift that the incremental form accumulates over cycles.
+class MeshRelaxation
+{
+  public:
+    bool active = false;
+    Vector<double> t;            // time points (t[0] = 0, increasing)
+    Vector<double> alpha;        // relaxation weights in [0,1]
+    double period = 0.0;         // = t[last]; the schedule repeats with this period
+
+    /// @brief Relaxation weight at time 'time' (linear interpolation, periodic).
+    double value(double time) const
+    {
+      if (!active) { return 0.0; }
+      int n = t.size();
+      double tt = (period > 0.0) ? std::fmod(time, period) : time;
+      if (tt < 0.0) { tt += period; }
+      int i = 0;
+      while (i < n - 2 && t(i+1) < tt) { i++; }
+      double tau = (tt - t(i)) / (t(i+1) - t(i));
+      tau = std::min(1.0, std::max(0.0, tau));
+      return (1.0 - tau) * alpha(i) + tau * alpha(i+1);
+    }
+};
+
 class bcType
 {
   public:
@@ -1302,6 +1333,14 @@ class eqType
     /// @brief Mesh equation: total displacement on the original mesh
     /// (true) instead of the increment on the start-of-step configuration (false)
     bool mesh_total_disp = false;
+
+    /// @brief Mesh equation: Jacobian-based stiffening exponent chi; the element
+    /// stiffness scales as (element size)^(-chi). 1 = the original svFSI behaviour.
+    double mesh_stiff_exp = 1.0;
+
+    /// @brief Mesh equation: relaxation of the incremental mesh motion toward the
+    /// original-mesh solution (see MeshRelaxation)
+    MeshRelaxation mesh_relax;
 
     /// @brief Body force associated with this equation
     std::vector<bfType> bf;
