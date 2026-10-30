@@ -138,7 +138,7 @@ def n_proc(request):
     return request.param
 
 
-def run_by_name(folder, name, t_max, n_proc=1):
+def run_by_name(folder, name, t_max, n_proc=1, result_prefix="result_"):
     """
     Run a test case and return results
     Args:
@@ -146,6 +146,7 @@ def run_by_name(folder, name, t_max, n_proc=1):
         name: name of svMultiPhysics input file (.xml)
         t_max: time step to compare
         n_proc: number of processors
+        result_prefix: prefix of the result filename, including its final underscore
 
     Returns:
     Simulation results
@@ -189,9 +190,14 @@ def run_by_name(folder, name, t_max, n_proc=1):
         )
 
     # read results
-    fname = os.path.join(
-        folder, str(n_proc) + "-procs", "result_" + str(t_max).zfill(3) + ".vtu"
-    )
+    if not result_prefix:
+        fname = os.path.join(
+            folder, str(n_proc) + "-procs", "result_" + str(t_max).zfill(3) + ".vtu"
+        )
+    else:
+        fname = os.path.join(
+            folder, str(n_proc) + "-procs", result_prefix + str(t_max).zfill(3) + ".vtu"
+        )
     if not os.path.exists(fname):
         raise RuntimeError("No svMultiPhysics output: " + fname)
     return meshio.read(fname)
@@ -206,6 +212,8 @@ def run_with_reference(
     name_ref=None,
     name_inp="solver.xml",
     check_time_value=True,
+    field_rtol=None,
+    result=None,
 ):
     """
     Run a test case and compare it to a stored reference solution
@@ -218,14 +226,20 @@ def run_with_reference(
         name_ref: name of reference file (.vtu)
         check_time_value: whether to compare the TimeValue field data against
             the time reached at time step t_max
+        field_rtol: optional overrides for field comparison tolerances
+        result: optional meshio result from an already completed simulation
     """
+    # An already loaded result lets multi-domain tests check both output files
+    # from one simulation without deleting and rerunning its output directory.
     # default reference name
     if not name_ref:
         name_ref = "result_" + str(t_max).zfill(3) + ".vtu"
 
     # run simulation
     folder = os.path.join("cases", base_folder, test_folder)
-    res = run_by_name(folder, name_inp, t_max, n_proc)
+    res = result if result is not None else run_by_name(
+        folder, name_inp, t_max, n_proc=n_proc
+    )
 
     # read reference
     fname = os.path.join(folder, name_ref)
@@ -268,7 +282,7 @@ def run_with_reference(
         # pick tolerance for current field
         if f not in RTOL:
             raise ValueError("No tolerance defined for field " + f)
-        rtol = RTOL[f]
+        rtol = field_rtol.get(f, RTOL[f]) if field_rtol else RTOL[f]
 
         # relative difference (as computed in np.isclose)
         # note that we consider rtol as absolute zero (and as relative tolerance)

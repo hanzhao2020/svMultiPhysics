@@ -112,7 +112,8 @@ bool output_field_for_immersed_part(const std::string& name, const ImmersedOutpu
 
 void write_single_mesh_vtu(const ComMod& com_mod, const mshType& mesh, const dataType& data,
     const std::vector<std::string>& outNames, const std::vector<int>& outS, const int nOut,
-    const std::string& file_name, const ImmersedOutputPart part, const int output_domain)
+    const std::string& file_name, const ImmersedOutputPart part, const int output_domain,
+    const std::vector<std::string>& element_names, const bool lAve)
 {
   (void)mesh;
 
@@ -122,6 +123,9 @@ void write_single_mesh_vtu(const ComMod& com_mod, const mshType& mesh, const dat
 
   const int nsd = com_mod.nsd;
   auto vtk_writer = VtkData::create_writer(file_name);
+  if (!lAve) {
+    vtk_writer->set_time_value(com_mod.time);
+  }
 
   Array<double> points(consts::maxNSD, data.nNo);
   points = 0.0;
@@ -162,13 +166,36 @@ void write_single_mesh_vtu(const ComMod& com_mod, const mshType& mesh, const dat
   vtk_writer->set_element_data("Domain_ID", domain_id);
   vtk_writer->set_element_data("Immersed_Output_Mesh_ID", mesh_id);
 
+  // int_msh_data stores gathered element results as (element, field), after
+  // the optional domain and partition metadata columns.
+  int element_offset = 0;
+  if (!com_mod.savedOnce || com_mod.nMsh > 1 || com_mod.alwaysSaveDomainID) {
+    element_offset = com_mod.savedOnce ? 1 : 2;
+  }
+  if (!com_mod.savedOnce && !com_mod.cm.seq()) {
+    Array<int> partition_id(1,data.nEl);
+    for (int e = 0; e < data.nEl; e++) {
+      partition_id(0,e) = static_cast<int>(data.xe(e,1));
+    }
+    vtk_writer->set_element_data("Proc_ID", partition_id);
+  }
+  for (int field = 0; field < element_names.size(); field++) {
+    Array<double> values(1,data.nEl);
+    for (int e = 0; e < data.nEl; e++) {
+      values(0,e) = data.xe(e,element_offset + field);
+    }
+    vtk_writer->set_element_data(element_names[field], values);
+  }
+
   vtk_writer->write();
   delete vtk_writer;
 }
 
 void write_immersed_domain_vtus(const ComMod& com_mod, const std::vector<mshType>& meshes,
     const std::vector<dataType>& data, const std::vector<std::string>& outNames,
-    const std::vector<int>& outS, const int nOut, const std::string& time_label)
+    const std::vector<int>& outS, const int nOut, const std::string& time_label,
+    const Vector<int>& fluid_meshes, const Vector<int>& solid_meshes,
+    const std::vector<std::string>& element_names, const bool lAve)
 {
   if (!equation_uses_immersed_fsi(com_mod)) {
     return;
@@ -183,27 +210,27 @@ void write_immersed_domain_vtus(const ComMod& com_mod, const std::vector<mshType
   int n_fluid_meshes = 0;
   int n_solid_meshes = 0;
   for (int iM = 0; iM < com_mod.nMsh; iM++) {
-    if (mesh_has_domain(meshes[iM], fluid_domain)) {
+    if (fluid_meshes(iM) != 0) {
       n_fluid_meshes++;
     }
-    if (mesh_has_domain(meshes[iM], solid_domain)) {
+    if (solid_meshes(iM) != 0) {
       n_solid_meshes++;
     }
   }
 
   for (int iM = 0; iM < com_mod.nMsh; iM++) {
-    if (mesh_has_domain(meshes[iM], fluid_domain)) {
+    if (fluid_meshes(iM) != 0) {
       const auto mesh_suffix = n_fluid_meshes > 1 ? "_" + meshes[iM].dname : "";
       const auto file_name = com_mod.saveName + "_fluid" + mesh_suffix + "_" + time_label + ".vtu";
       write_single_mesh_vtu(com_mod, meshes[iM], data[iM], outNames, outS, nOut,
-          file_name, ImmersedOutputPart::fluid, fluid_domain);
+          file_name, ImmersedOutputPart::fluid, fluid_domain, element_names, lAve);
     }
 
-    if (mesh_has_domain(meshes[iM], solid_domain)) {
+    if (solid_meshes(iM) != 0) {
       const auto mesh_suffix = n_solid_meshes > 1 ? "_" + meshes[iM].dname : "";
       const auto file_name = com_mod.saveName + "_solid" + mesh_suffix + "_" + time_label + ".vtu";
       write_single_mesh_vtu(com_mod, meshes[iM], data[iM], outNames, outS, nOut,
-          file_name, ImmersedOutputPart::solid, solid_domain);
+          file_name, ImmersedOutputPart::solid, solid_domain, element_names, lAve);
     }
   }
 }
@@ -495,45 +522,39 @@ void int_msh_data(const ComMod& com_mod, const CmMod& cm_mod, const mshType& lM,
     }
   }
 
-  // [NOTE] Skip this code, problems with 0-sized arrays.
-
-  if (0) {
-    if (cm.mas(cm_mod)) {
-      disps.resize(cm.np()); 
-      sCount.resize(cm.np()); 
-      gDe.resize(nOute,d.nEl);
-
-      for (int i = 0; i < cm.np(); i++) {
-        disps(i) = lM.eDist(i)*nOute;
-        sCount(i) = lM.eDist(i+1)*nOute - disps(i);
-        #ifdef debug_int_msh_data
-        dmsg << "disps(i): " << disps(i);
-        dmsg << "sCount(i): " << sCount(i);
-        #endif
-      }
-    } else { 
-      disps.clear(); 
-      sCount.clear(); 
-      gDe.clear();
-    }
-
-    #ifdef debug_int_msh_data
-    dmsg << "Send lDe to gDe ...";
-    dmsg << "  lDe.size(): " << lDe.size();
-    dmsg << "  nOute*lM.nEl: " << nOute*lM.nEl;
-    dmsg << "  gDe.size(): " << gDe.size();
-    #endif
-    MPI_Gatherv(lDe.data(), nOute*lM.nEl, cm_mod::mpreal, gDe.data(), sCount.data(), disps.data(), cm_mod::mpreal, cm_mod.master, cm.com());
-
-    if (cm.mas(cm_mod)) {
+  // Every rank participates when fields are requested, including ranks with
+  // no local elements. A zero-count MPI send may use a null buffer.
+  if (nOute > 0) {
+    if (cm.seq()) {
       for (int e = 0; e < lM.gnEl; e++) {
-        int Ec = lM.otnIEN(e);
-        for (int i = 0; i < nOute; i++) {
-          d.xe(e,m+i) = gDe(i,Ec);
+        const int Ec = lM.otnIEN(e);
+        for (int field = 0; field < nOute; field++) {
+          d.xe(e,m+field) = lDe(field,Ec);
+        }
+      }
+    } else {
+      sCount.resize(cm.np());
+      disps.resize(cm.np());
+      for (int rank = 0; rank < cm.np(); rank++) {
+        disps(rank) = lM.eDist(rank)*nOute;
+        sCount(rank) = (lM.eDist(rank+1) - lM.eDist(rank))*nOute;
+      }
+      if (cm.mas(cm_mod)) {
+        gDe.resize(nOute,lM.gnEl);
+      }
+      MPI_Gatherv(lDe.data(), nOute*lM.nEl, cm_mod::mpreal,
+          gDe.data(), sCount.data(), disps.data(), cm_mod::mpreal,
+          cm_mod.master, cm.com());
+      if (cm.mas(cm_mod)) {
+        for (int e = 0; e < lM.gnEl; e++) {
+          const int Ec = lM.otnIEN(e);
+          for (int field = 0; field < nOute; field++) {
+            d.xe(e,m+field) = gDe(field,Ec);
+          }
         }
       }
     }
-    m = m + nOute;
+    m += nOute;
   }
 
   // [NOTE] Skip this code, problems with 0-sized arrays.
@@ -1634,6 +1655,24 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
     nEl = nEl + d[iM].nEl;
   }
 
+  const bool write_immersed_domains = equation_uses_immersed_fsi(com_mod);
+  Vector<int> fluid_meshes(nMsh);
+  Vector<int> solid_meshes(nMsh);
+  fluid_meshes = 0;
+  solid_meshes = 0;
+  if (write_immersed_domains) {
+    const int fluid_domain = immersed_domain(com_mod, ImmersedOutputPart::fluid);
+    const int solid_domain = immersed_domain(com_mod, ImmersedOutputPart::solid);
+    for (int iM = 0; iM < nMsh; iM++) {
+      fluid_meshes(iM) = mesh_has_domain(meshes[iM], fluid_domain);
+      solid_meshes(iM) = mesh_has_domain(meshes[iM], solid_domain);
+    }
+
+    // Rank 0 may not own an immersed-solid element after partitioning.
+    fluid_meshes = cm.reduce(cm_mod, fluid_meshes, MPI_MAX);
+    solid_meshes = cm.reduce(cm_mod, solid_meshes, MPI_MAX);
+  }
+
   if (cm.slv(cm_mod)) {
     com_mod.savedOnce = true;
     return; 
@@ -1653,6 +1692,13 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
     std::ostringstream ss;
     ss << std::setw(3) << std::setfill('0') << com_mod.cTS;
     time_label = ss.str();
+  }
+
+  if (write_immersed_domains) {
+    write_immersed_domain_vtus(com_mod, meshes, d, outNames, outS, nOut, time_label,
+        fluid_meshes, solid_meshes, outNamesE, lAve);
+    com_mod.savedOnce = true;
+    return;
   }
 
   fName = com_mod.saveName + "_" + time_label + ".vtu";
@@ -1811,7 +1857,6 @@ void write_vtus(Simulation* simulation, const SolutionStates& solutions, const b
   vtk_writer->write();
   delete vtk_writer;
 
-  write_immersed_domain_vtus(com_mod, meshes, d, outNames, outS, nOut, time_label);
 }
 
 };

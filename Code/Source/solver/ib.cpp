@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -102,96 +103,130 @@ void clear_fluid_trace_nodes(ifemCouplingType& trace)
 }
 
 
-/// @brief Locate an immersed point in the background fluid mesh.
-bool locate_background_fluid_trace(const ComMod& com_mod, const Vector<double>& x,
-    const int fluid_domain, ifemCouplingType& trace) {
+// First-order FE interpolation must not extrapolate into a neighboring cell.
+// get_nnx's general 1e-4 acceptance margin is too wide here: cached traces on
+// different ranks can otherwise represent different interpolation operators.
+bool first_order_fluid_element(const mshType& mesh)
+{
+  using namespace consts;
+  return mesh.eType == ElementType::TRI3 || mesh.eType == ElementType::QUD4 ||
+      mesh.eType == ElementType::TET4 || mesh.eType == ElementType::HEX8;
+}
+
+bool evaluate_fluid_trace(const ComMod& com_mod, const mshType& mesh, const int e,
+    const Vector<double>& x, Vector<double>& N)
+{
   const int nsd = com_mod.nsd;
-
-  // Most immersed nodes move little between Newton iterations, so try the
-  // previous containing element before scanning the full background mesh.
-  if (trace.fluidMesh >= 0 && trace.fluidMesh < com_mod.nMsh) {
-    const auto& mesh = com_mod.msh[trace.fluidMesh];
-    const int e = trace.fluidElem;
-
-    if (e >= 0 && e < mesh.nEl && mesh.eId.size() != 0 && utils::btest(mesh.eId(e), fluid_domain)) {
-      const int eNoN = mesh.eNoN;
-      Array<double> xl(nsd, eNoN);
+  const int eNoN = mesh.eNoN;
+  const bool first_order = first_order_fluid_element(mesh);
+  // A nodal bounding box is conservative for these first-order elements.
+  // Reject distant cells without a failed inverse map and an exception.
+  if (first_order) {
+    for (int i = 0; i < nsd; i++) {
+      double lo = std::numeric_limits<double>::max();
+      double hi = std::numeric_limits<double>::lowest();
       for (int a = 0; a < eNoN; a++) {
-        const int Ac = mesh.IEN(a,e);
-        for (int i = 0; i < nsd; i++) {
-          xl(i,a) = com_mod.x(i,Ac);
-        }
+        const double value = com_mod.x(i,mesh.IEN(a,e));
+        lo = std::min(lo, value);
+        hi = std::max(hi, value);
       }
-
-      Vector<double> xi(nsd);
-      xi = 0.0;
-      if (mesh.xi.ncols() != 0) {
-        for (int g = 0; g < mesh.xi.ncols(); g++) {
-          for (int i = 0; i < nsd; i++) {
-            xi(i) += mesh.xi(i,g);
-          }
-        }
-        for (int i = 0; i < nsd; i++) {
-          xi(i) /= static_cast<double>(mesh.xi.ncols());
-        }
-      }
-
-      Vector<double> N(eNoN);
-      Array<double> Nx(nsd, eNoN);
-      try {
-        nn::get_nnx(nsd, mesh.eType, eNoN, xl, mesh.xib, mesh.Nb, x, xi, N, Nx);
-        set_fluid_trace_nodes(com_mod, mesh, e, N, trace);
-        return true;
-      } catch (const std::exception&) {
+      const double eps = 64.0 * std::numeric_limits<double>::epsilon() *
+          std::max(1.0, std::max(std::abs(lo), std::abs(hi)));
+      if (x(i) < lo - eps || x(i) > hi + eps) {
+        return false;
       }
     }
   }
+  Array<double> xl(nsd,eNoN);
+  for (int a = 0; a < eNoN; a++) {
+    for (int i = 0; i < nsd; i++) {
+      xl(i,a) = com_mod.x(i,mesh.IEN(a,e));
+    }
+  }
+  Vector<double> xi(nsd);
+  xi = 0.0;
+  if (mesh.xi.ncols() != 0) {
+    for (int g = 0; g < mesh.xi.ncols(); g++) {
+      for (int i = 0; i < nsd; i++) {
+        xi(i) += mesh.xi(i,g) / static_cast<double>(mesh.xi.ncols());
+      }
+    }
+  }
+  Array<double> Nx(nsd,eNoN);
+  N.resize(eNoN);
+  try {
+    nn::get_nnx(nsd, mesh.eType, eNoN, xl, mesh.xib, mesh.Nb, x, xi, N, Nx);
+  } catch (const std::exception&) {
+    return false;
+  }
+  if (first_order) {
+    for (int a = 0; a < eNoN; a++) {
+      if (N(a) < -1.0e-12 || N(a) > 1.0 + 1.0e-12) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
+std::vector<int> fluid_trace_key(const ifemCouplingType& trace)
+{
+  std::vector<int> key(trace.fluidGlobalNodes.begin(), trace.fluidGlobalNodes.end());
+  std::sort(key.begin(), key.end());
+  key.insert(key.begin(), trace.fluidMesh);
+  return key;
+}
+
+/// @brief Locate a point without retaining an extrapolating cached trace.
+bool locate_background_fluid_trace(const ComMod& com_mod, const Vector<double>& x,
+    const int fluid_domain, ifemCouplingType& trace)
+{
+  // An interior point has a unique host cell. Boundary points are searched
+  // again so the choice does not depend on cache history or element ordering.
+  if (trace.fluidElemOwnerRank == com_mod.cm.idcm() &&
+      trace.fluidMesh >= 0 && trace.fluidMesh < com_mod.nMsh) {
+    const auto& mesh = com_mod.msh[trace.fluidMesh];
+    const int e = trace.fluidElem;
+    Vector<double> N;
+    if (first_order_fluid_element(mesh) && e >= 0 && e < mesh.nEl &&
+        mesh.eId.size() != 0 && utils::btest(mesh.eId(e), fluid_domain) &&
+        evaluate_fluid_trace(com_mod, mesh, e, x, N)) {
+      bool interior = true;
+      for (int a = 0; a < N.size(); a++) {
+        interior = interior && N(a) > 1.0e-12;
+      }
+      if (interior) {
+        set_fluid_trace_nodes(com_mod, mesh, e, N, trace);
+        return true;
+      }
+    }
+  }
+  bool found = false;
+  std::vector<int> best_key;
   for (int iM = 0; iM < com_mod.nMsh; iM++) {
     const auto& mesh = com_mod.msh[iM];
-    const int eNoN = mesh.eNoN;
-    Array<double> xl(nsd, eNoN);
-
     for (int e = 0; e < mesh.nEl; e++) {
       if (mesh.eId.size() == 0 || !utils::btest(mesh.eId(e), fluid_domain)) {
         continue;
       }
-
-      for (int a = 0; a < eNoN; a++) {
-        const int Ac = mesh.IEN(a,e);
-        for (int i = 0; i < nsd; i++) {
-          xl(i,a) = com_mod.x(i,Ac);
-        }
-      }
-
-      Vector<double> xi(nsd);
-      xi = 0.0;
-      if (mesh.xi.ncols() != 0) {
-        for (int g = 0; g < mesh.xi.ncols(); g++) {
-          for (int i = 0; i < nsd; i++) {
-            xi(i) += mesh.xi(i,g);
-          }
-        }
-        for (int i = 0; i < nsd; i++) {
-          xi(i) /= static_cast<double>(mesh.xi.ncols());
-        }
-      }
-      Vector<double> N(eNoN);
-      Array<double> Nx(nsd, eNoN);
-
-      try {
-        nn::get_nnx(nsd, mesh.eType, eNoN, xl, mesh.xib, mesh.Nb, x, xi, N, Nx);
-      } catch (const std::exception&) {
+      Vector<double> N;
+      if (!evaluate_fluid_trace(com_mod, mesh, e, x, N)) {
         continue;
       }
-
-      trace.fluidMesh = iM;
-      set_fluid_trace_nodes(com_mod, mesh, e, N, trace);
-      return true;
+      ifemCouplingType candidate;
+      candidate.fluidMesh = iM;
+      set_fluid_trace_nodes(com_mod, mesh, e, N, candidate);
+      const auto key = fluid_trace_key(candidate);
+      if (!found || key < best_key) {
+        candidate.ibNode = trace.ibNode;
+        candidate.ibGlobalNode = trace.ibGlobalNode;
+        trace = std::move(candidate);
+        best_key = key;
+        found = true;
+      }
     }
   }
-
-  return false;
+  return found;
 }
 
 
@@ -344,6 +379,7 @@ void resolve_missed_coupling_rows_parallel(ComMod& com_mod, const int fluid_doma
 
   int meta_pos = 0;
   int n_pos = 0;
+  std::set<std::pair<int,int>> selected_queries;
   while (meta_pos < result_meta.size()) {
     const int owner_rank = result_meta[meta_pos++];
     const int owner_ib_node = result_meta[meta_pos++];
@@ -361,6 +397,13 @@ void resolve_missed_coupling_rows_parallel(ComMod& com_mod, const int fluid_doma
     }
     for (int a = 0; a < n_nodes; a++) {
       fluid_global_nodes[a] = result_meta[meta_pos++];
+    }
+
+    // All ranks parse the same responses in the same order. Retain only
+    // the response that the querying solid rank will actually select.
+    if (!selected_queries.emplace(owner_rank, owner_ib_node).second) {
+      n_pos += n_nodes;
+      continue;
     }
 
     if (fluid_elem_owner == rank && owner_rank != rank) {
@@ -709,76 +752,68 @@ void add_exact_ifem_graph_entries(ComMod& com_mod, const int solid_domain,
 }
 
 
-void project_remote_fluid_state_to_solid(ComMod& com_mod, const Array<double>& Ag,
-    const Array<double>& Yg)
+// Apply only the trace selected by the receiving solid copy. A node on a
+// partition boundary can have several valid point-location responses.
+void project_remote_fluid_field_to_solid(ComMod& com_mod, const Array<double>& field,
+    Array<double>& projected)
 {
   auto& ib_data = com_mod.ib;
   const int nsd = com_mod.nsd;
-  const int rank = com_mod.cm.idcm();
-
   std::vector<int> local_meta;
   std::vector<double> local_values;
-
   for (const auto& row : ib_data.ifemRemoteCoupling) {
-    Vector<double> Ab(nsd), Yb(nsd);
-    Ab = 0.0;
-    Yb = 0.0;
-
-    for (int a = 0; a < row.fluidNodes.size(); a++) {
-      const int Ac = row.fluidNodes(a);
-      const double Na = row.N(a);
-      for (int i = 0; i < nsd; i++) {
-        Ab(i) += Na * Ag(i,Ac);
-        Yb(i) += Na * Yg(i,Ac);
-      }
-    }
-
     local_meta.push_back(row.ibGlobalNode);
+    local_meta.push_back(row.fluidMesh);
+    local_meta.push_back(row.fluidElemOwnerRank);
+    local_meta.push_back(row.fluidElemGlobal);
     for (int i = 0; i < nsd; i++) {
-      local_values.push_back(Ab(i));
-    }
-    for (int i = 0; i < nsd; i++) {
-      local_values.push_back(Yb(i));
+      double value = 0.0;
+      for (int a = 0; a < row.fluidNodes.size(); a++) {
+        value += row.N(a) * field(i,row.fluidNodes(a));
+      }
+      local_values.push_back(value);
     }
   }
-
   std::vector<int> meta;
   std::vector<double> values;
   allgatherv_int(com_mod, local_meta, meta);
   allgatherv_double(com_mod, local_values, values);
-
   std::unordered_map<int, int> local_ib_nodes;
   for (int a = 0; a < ib_data.tnNo; a++) {
     local_ib_nodes[ib_data.ifemCoupling[a].ibGlobalNode] = a;
   }
-
-  std::vector<int> remote_state_set(ib_data.tnNo, 0);
-  for (int r = 0; r < meta.size(); r++) {
-    const auto it = local_ib_nodes.find(meta[r]);
+  std::vector<int> received(ib_data.tnNo, 0);
+  for (int r = 0; r < meta.size() / 4; r++) {
+    const auto it = local_ib_nodes.find(meta[4*r]);
     if (it == local_ib_nodes.end()) {
       continue;
     }
-
-    const int ib_node = it->second;
+    const auto& row = ib_data.ifemCoupling[it->second];
+    if (row.fluidElemOwnerRank == com_mod.cm.idcm() ||
+        row.fluidMesh != meta[4*r + 1] ||
+        row.fluidElemOwnerRank != meta[4*r + 2] ||
+        row.fluidElemGlobal != meta[4*r + 3]) {
+      continue;
+    }
     for (int i = 0; i < nsd; i++) {
-      ib_data.Auk(i,ib_node) = values[(2*nsd)*r + i];
-      ib_data.Yb(i,ib_node) = values[(2*nsd)*r + nsd + i];
+      projected(i,it->second) = values[nsd*r + i];
     }
-    remote_state_set[ib_node] = 1;
+    received[it->second] = 1;
   }
-
-  int missing_remote_state = 0;
   for (const auto& row : ib_data.ifemCoupling) {
-    if (row.fluidElemOwnerRank >= 0 && row.fluidElemOwnerRank != rank &&
-        remote_state_set[row.ibNode] == 0) {
-      missing_remote_state++;
+    if (row.fluidElemOwnerRank >= 0 && row.fluidElemOwnerRank != com_mod.cm.idcm() &&
+        received[row.ibNode] == 0) {
+      throw std::runtime_error("[ib] Missing remote projection for selected IFEM trace at node " +
+          std::to_string(row.ibGlobalNode) + ".");
     }
   }
+}
 
-  if (missing_remote_state != 0) {
-    throw std::runtime_error("[ib::construct_immersed_fsi] Missing remote IFEM fluid-state "
-        "projection for " + std::to_string(missing_remote_state) + " immersed coupling rows.");
-  }
+void project_remote_fluid_state_to_solid(ComMod& com_mod, const Array<double>& Ag,
+    const Array<double>& Yg)
+{
+  project_remote_fluid_field_to_solid(com_mod, Ag, com_mod.ib.Auk);
+  project_remote_fluid_field_to_solid(com_mod, Yg, com_mod.ib.Yb);
 }
 
 
@@ -983,67 +1018,16 @@ void add_remote_ifem_spread_to_fluid(ComMod& com_mod, const std::vector<int>& lo
 void project_remote_fluid_increment_to_solid(ComMod& com_mod, const Array<double>& fluid_increment)
 {
   auto& ib_data = com_mod.ib;
-  const int nsd = com_mod.nsd;
-  const int rank = com_mod.cm.idcm();
-
-  std::vector<int> local_meta;
-  std::vector<double> local_values;
-
-  for (const auto& row : ib_data.ifemRemoteCoupling) {
-    Vector<double> solid_increment(nsd);
-    solid_increment = 0.0;
-
-    for (int a = 0; a < row.fluidNodes.size(); a++) {
-      const int fluid_node = row.fluidNodes(a);
-      const double Na = row.N(a);
-      for (int i = 0; i < nsd; i++) {
-        solid_increment(i) += Na * fluid_increment(i,fluid_node);
-      }
-    }
-
-    local_meta.push_back(row.ibGlobalNode);
-    for (int i = 0; i < nsd; i++) {
-      local_values.push_back(solid_increment(i));
-    }
-  }
-
-  std::vector<int> meta;
-  std::vector<double> values;
-  allgatherv_int(com_mod, local_meta, meta);
-  allgatherv_double(com_mod, local_values, values);
-
-  std::unordered_map<int, int> local_ib_nodes;
-  for (int a = 0; a < ib_data.tnNo; a++) {
-    local_ib_nodes[ib_data.ifemCoupling[a].ibGlobalNode] = a;
-  }
-
-  std::vector<int> remote_increment_set(ib_data.tnNo, 0);
-  for (int r = 0; r < meta.size(); r++) {
-    const auto it = local_ib_nodes.find(meta[r]);
-    if (it == local_ib_nodes.end()) {
+  Array<double> projected(com_mod.nsd, ib_data.tnNo);
+  projected = 0.0;
+  project_remote_fluid_field_to_solid(com_mod, fluid_increment, projected);
+  for (const auto& row : ib_data.ifemCoupling) {
+    if (row.fluidElemOwnerRank == com_mod.cm.idcm()) {
       continue;
     }
-
-    const int ib_node = it->second;
-    const int solid_node = ib_data.gN(ib_node);
-    for (int i = 0; i < nsd; i++) {
-      com_mod.R(i,solid_node) = values[nsd*r + i];
+    for (int i = 0; i < com_mod.nsd; i++) {
+      com_mod.R(i,ib_data.gN(row.ibNode)) = projected(i,row.ibNode);
     }
-    remote_increment_set[ib_node] = 1;
-  }
-
-  int missing_remote_increment = 0;
-  for (const auto& row : ib_data.ifemCoupling) {
-    if (row.fluidElemOwnerRank >= 0 && row.fluidElemOwnerRank != rank &&
-        remote_increment_set[row.ibNode] == 0) {
-      missing_remote_increment++;
-    }
-  }
-
-  if (missing_remote_increment != 0) {
-    throw std::runtime_error("[ib::project_fluid_increment_to_solid] Missing remote IFEM "
-        "increment projection for " + std::to_string(missing_remote_increment) +
-        " immersed coupling rows.");
   }
 }
 
@@ -1509,11 +1493,13 @@ bool build_ifem_coupling_operator(ComMod& com_mod, const SolutionStates& solutio
 
   std::vector<int> old_fluid_mesh(ib_data.tnNo, -1);
   std::vector<int> old_fluid_elem(ib_data.tnNo, -1);
+  std::vector<int> old_fluid_owner(ib_data.tnNo, -1);
   const bool previous_coupling_exists = ib_data.ifemCoupling.size() == static_cast<std::size_t>(ib_data.tnNo);
   if (previous_coupling_exists) {
     for (int a = 0; a < ib_data.tnNo; a++) {
       old_fluid_mesh[a] = ib_data.ifemCoupling[a].fluidMesh;
       old_fluid_elem[a] = ib_data.ifemCoupling[a].fluidElem;
+      old_fluid_owner[a] = ib_data.ifemCoupling[a].fluidElemOwnerRank;
     }
   }
 
@@ -1530,7 +1516,8 @@ bool build_ifem_coupling_operator(ComMod& com_mod, const SolutionStates& solutio
   if (previous_coupling_exists) {
     for (int a = 0; a < ib_data.tnNo; a++) {
       if (old_fluid_mesh[a] != ib_data.ifemCoupling[a].fluidMesh ||
-          old_fluid_elem[a] != ib_data.ifemCoupling[a].fluidElem) {
+          old_fluid_elem[a] != ib_data.ifemCoupling[a].fluidElem ||
+          old_fluid_owner[a] != ib_data.ifemCoupling[a].fluidElemOwnerRank) {
         local_graph_changed = 1;
         break;
       }
@@ -1656,10 +1643,13 @@ void project_fluid_velocity_to_solid(ComMod& com_mod, SolutionStates& solutions)
         ib_data.Yb(i,row.ibNode) += Na * velocity(i,Ac);
       }
     }
-
-    const int solid_node = ib_data.gN(row.ibNode);
+  }
+  if (!com_mod.cm.seq()) {
+    project_remote_fluid_field_to_solid(com_mod, velocity, ib_data.Yb);
+  }
+  for (int a = 0; a < ib_data.tnNo; a++) {
     for (int i = 0; i < nsd; i++) {
-      velocity(i,solid_node) = ib_data.Yb(i,row.ibNode);
+      velocity(i,ib_data.gN(a)) = ib_data.Yb(i,a);
     }
   }
 }
