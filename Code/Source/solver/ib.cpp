@@ -8,8 +8,8 @@
 #include "nn.h"
 #include "utils.h"
 
-#include "fluid.h"
-#include "sv_struct.h"
+#include "fluid/fluid.h"
+#include "solid/sv_struct.h"
 
 #include <algorithm>
 #include <limits>
@@ -1740,7 +1740,6 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
     project_remote_fluid_state_to_solid(com_mod, Ag, Yg);
   }
 
-  auto& cem = cep_mod.cem;
   std::vector<int> remote_spread_meta;
   std::vector<double> remote_spread_values;
 
@@ -1755,8 +1754,9 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
       nFn = 1;
     }
 
-    Vector<int> ptr(eNoN);
-    Vector<double> pSl(nsymd), ya_l_f(eNoN), ya_l_s(eNoN), ya_l_n(eNoN), N(eNoN);
+    Vector<int> ptr(eNoN), solid_nodes(eNoN);
+    Vector<double> pSl(nsymd), N(eNoN);
+    ActiveStress::Evaluator active_stress_evaluator;
     Array<double> xl(nsd,eNoN), al(tDof,eNoN), yl(tDof,eNoN), dl(tDof,eNoN),
         bfl(nsd,eNoN), fN(nsd,nFn), pS0l(nsymd,eNoN), Nx(nsd,eNoN), lR(dof,eNoN);
     Array3<double> lK(dof*dof,eNoN,eNoN);
@@ -1770,14 +1770,12 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
 
       fN = 0.0;
       pS0l = 0.0;
-      ya_l_f = 0.0;
-      ya_l_s = 0.0;
-      ya_l_n = 0.0;
 
       for (int a = 0; a < eNoN; a++) {
         const int ib_Ac = ib_mesh.IEN(a,e);
         const int global_Ac = ib_data.gN(ib_Ac);
         ptr(a) = ib_Ac;
+        solid_nodes(a) = global_Ac;
 
         for (int i = 0; i < nsd; i++) {
           xl(i,a) = ib_data.x(i,ib_Ac);
@@ -1807,11 +1805,12 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
           pS0l.set_col(a, pS0.col(global_Ac));
         }
 
-        if (cem.cpld) {
-          ya_l_f(a) = cem.Ya_f[global_Ac];
-          ya_l_s(a) = cem.Ya_s[global_Ac];
-          ya_l_n(a) = cem.Ya_n[global_Ac];
-        }
+      }
+
+      if (eq.dmn[cDmn].active_stress != nullptr) {
+        active_stress_evaluator.update(*eq.dmn[cDmn].active_stress, solid_nodes);
+      } else {
+        active_stress_evaluator.clear();
       }
 
       lR = 0.0;
@@ -1837,10 +1836,10 @@ void construct_immersed_fsi(ComMod& com_mod, CepMod& cep_mod, const mshType& lM,
 
         if (nsd == 3) {
           struct_ns::struct_3d(com_mod, cep_mod, eNoN, nFn, w, N, Nx, al, yl, dl, bfl, fN, pS0l, pSl,
-                               ya_l_f, ya_l_s, ya_l_n, lR, lK, recompute_visc);
+                               active_stress_evaluator, lR, lK, recompute_visc);
         } else if (nsd == 2) {
           struct_ns::struct_2d(com_mod, cep_mod, eNoN, nFn, w, N, Nx, al, yl, dl, bfl, fN, pS0l, pSl,
-                               ya_l_f, ya_l_s, ya_l_n, lR, lK, recompute_visc);
+                               active_stress_evaluator, lR, lK, recompute_visc);
         }
 
         if (pstEq) {
